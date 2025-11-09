@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Persona Demo (Static + WebLLM)</title>
+  <style>
+    html,body {
+      margin:0;
+      height:100%;
+      background:#0f0f11;
+      color:#fff;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto;
+    }
+
+    /* 整个场景容器，带背景图；初始为 neutral 主题 */
+    .wrap {
+      position:relative;
+      height:100vh;
+      overflow:hidden;
+      background-size:cover;
+      background-position:center;
+      background-repeat:no-repeat;
+    }
+    .wrap.theme-neutral {
+      background-image:url("./img/bg-neutral.jpg");
+    }
+    .wrap.theme-abstract {
+      background-image:url("./img/bg-abstract.jpg");
+    }
+    .wrap.theme-literary {
+      background-image:url("./img/bg-literary.jpg");
+    }
+
+    /* p5 背景画布挂载点 */
+    #bg {
+  position:absolute;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+  opacity:0.4;              /* 让粒子半透明 */
+  mix-blend-mode:screen;    /* 让浅色粒子跟背景叠加 */
+}
+
+
+    /* 人物插画 */
+    .persona {
+      position:absolute;
+      inset:auto 0 9% 0;
+      margin:auto;
+      width:240px;
+      z-index:3;
+      filter:drop-shadow(0 12px 40px rgba(0,0,0,.6));
+      transform-origin:50% 100%;
+    }
+
+    /* 左上角 UI（数值与模式显示 + 手动按钮） */
+    .ui {
+      position:absolute;
+      top:12px;
+      left:12px;
+      z-index:4;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .btn {
+      background:#1f1f24;
+      border:1px solid #2e2e35;
+      padding:8px 12px;
+      border-radius:10px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .badge {
+      padding:4px 10px;
+      background:#202026;
+      border-radius:999px;
+      border:1px solid #2a2a31;
+    }
+
+    /* AI 回复气泡 */
+    .bubble {
+      position:absolute;
+      left:50%;
+      bottom:23%;
+      transform:translateX(-50%);
+      padding:10px 14px;
+      background:#191a20;
+      border:1px solid #2a2a31;
+      border-radius:12px;
+      z-index:5;
+      pointer-events:none;
+      white-space:nowrap;
+      max-width:80vw;
+    }
+
+    /* 变身闪光层 */
+    .flash {
+      position:absolute;
+      inset:0;
+      background:rgba(255,255,255,0);
+      z-index:2;
+      pointer-events:none;
+    }
+
+    /* 词语云容器：占满整屏，内部每个 tag 绝对定位在环上 */
+    .cloud {
+      position:absolute;
+      inset:0;
+      z-index:4;
+      pointer-events:none; /* 只让 tag 本身可点 */
+    }
+    .tag {
+      position:absolute;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid #2a2a31;
+      background:#16171c;
+      color:#e9e9ee;
+      opacity:.92;
+      cursor:pointer;
+      line-height:1;
+      transition:filter .2s ease, transform .1s ease;
+      will-change:transform;
+      pointer-events:auto;
+      white-space:nowrap;
+    }
+    .tag[data-type="abstract"] {
+      border-color:#5d2a7f;
+    }
+    .tag[data-type="literary"] {
+      border-color:#6b6b3a;
+    }
+    .tag:hover {
+      filter:brightness(1.15);
+    }
+  </style>
+</head>
+<body>
+  <!-- 初始使用 neutral 主题 -->
+  <div class="wrap theme-neutral" id="wrap">
+    <!-- p5 背景画布 mounting point -->
+    <div id="bg"></div>
+
+    <!-- 初始人格插画（neutral 版本） -->
+    <img id="persona" class="persona" src="./img/person-neutral.svg" alt="persona" />
+
+    <!-- 左上角 UI：当前数值与模式，可选手动按钮 -->
+    <div class="ui">
+      <button class="btn" data-type="abstract">+ Abstract</button>
+      <button class="btn" data-type="literary">+ Literary</button>
+      <span class="badge" id="stats">Abstract 0 · Literary 0</span>
+      <span class="badge" id="mode">Neutral</span>
+    </div>
+
+    <!-- 词语云（环绕在人物附近） -->
+    <div id="cloud" class="cloud" aria-label="word-cloud"></div>
+
+    <!-- 变身闪光层 -->
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <!-- 第三方库：p5 + GSAP（全局变量） -->
+  <script src="https://unpkg.com/p5@1.9.3/lib/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+  <!-- 主应用脚本（ES Module），内部会 import 其他模块和 WebLLM 封装 -->
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
