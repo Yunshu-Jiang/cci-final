@@ -199,26 +199,22 @@ function userPrompt(clickedType) {
     : "Reply in one polite, elegant sentence with smooth flow; obey the hard rules.";
 }
 function enforceStyle(text, clickedType) {
-  if (!text) return '…';
-
-  // 1) 只取第一行
+  // 显式处理空文本
+  if (!text || !String(text).trim()) {
+    return clickedType === 'abstract'
+      ? "Lowkey loading up, give me a sec."
+      : "Just a moment while I collect a proper sentence.";
+  }
   let s = String(text).split('\n')[0].trim();
-
-  // 2) 去掉所有 # 号（防止 hashtag）
   s = s.replace(/#/g, '').replace(/\s{2,}/g, ' ').trim();
 
-  // 3) 只保留第一句（用常见终止符切分）
   const firstSentence = s.split(/(?<=[.!?。！？])\s+/)[0] || s;
-
-  // 4) 确保以终止符结尾（. ! ?）
   let out = firstSentence.trim();
   if (!/[.!?]$/.test(out)) out += '.';
 
-  // 5) 长度兜底（与 prompt 的 6–22 词一致，可自行调整）
   const words = out.split(/\s+/);
   if (words.length < 3) {
-    // 太短时给一点点“尾音”以免像片段
-    out = out.replace(/[.!?]$/, '') + ', for real.';
+    out = out.replace(/[.!?]$/, '') + (clickedType === 'abstract' ? ', lowkey.' : ', indeed.');
   } else if (words.length > 24) {
     out = words.slice(0, 24).join(' ');
     if (!/[.!?]$/.test(out)) out += '.';
