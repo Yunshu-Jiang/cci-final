@@ -23,13 +23,13 @@
       background-repeat:no-repeat;
     }
     .wrap.theme-neutral {
-      background-image:url("./img/bg-neutral.jpg");
+      background-image:url("./img/bg-neutral.png");
     }
     .wrap.theme-abstract {
-      background-image:url("./img/bg-abstract.jpg");
+      background-image:url("./img/bg-abstract.png");
     }
     .wrap.theme-literary {
-      background-image:url("./img/bg-literary.jpg");
+      background-image:url("./img/bg-literary.png");
     }
 
     /* p5 背景画布挂载点 */
@@ -38,17 +38,17 @@
   inset:0;
   z-index:0;
   pointer-events:none;
-  opacity:0.4;              /* 让粒子半透明 */
-  mix-blend-mode:screen;    /* 让浅色粒子跟背景叠加 */
+  opacity:1;              /* 让粒子半透明 */
+  mix-blend-mode:normal;    /* 让浅色粒子跟背景叠加 */
 }
 
 
     /* 人物插画 */
     .persona {
       position:absolute;
-      inset:auto 0 9% 0;
+      inset:auto 0 0% 0;
       margin:auto;
-      width:240px;
+      width:1080px;
       z-index:3;
       filter:drop-shadow(0 12px 40px rgba(0,0,0,.6));
       transform-origin:50% 100%;
@@ -65,7 +65,7 @@
       flex-wrap:wrap;
       align-items:center;
     }
-    .btn {
+    /* .btn {
       background:#1f1f24;
       border:1px solid #2e2e35;
       padding:8px 12px;
@@ -78,7 +78,61 @@
       background:#202026;
       border-radius:999px;
       border:1px solid #2a2a31;
-    }
+    } */
+    /* --- Top UI: transparent background + white text with gray outline --- */
+:root { --ui-stroke: rgba(0,0,0,.45); }
+
+/* 覆盖原来的白底样式 */
+.ui .btn,
+.ui .badge{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+
+  /* 字体样式：白色 + 描边 */
+  color: #fff !important;
+  font-weight: 700;
+
+  /* Chrome/Safari 等：真正的文字描边 */
+  -webkit-text-stroke: 0.8px var(--ui-stroke);
+
+  /* 其它浏览器的降级：用多方向 text-shadow 逼近描边效果 */
+  text-shadow:
+    1px 0 0 var(--ui-stroke),
+   -1px 0 0 var(--ui-stroke),
+    0 1px 0 var(--ui-stroke),
+    0 -1px 0 var(--ui-stroke),
+    1px 1px 0 var(--ui-stroke),
+   -1px 1px 0 var(--ui-stroke),
+    1px -1px 0 var(--ui-stroke),
+   -1px -1px 0 var(--ui-stroke);
+}
+
+/* 保持可点区域：透明底时仍有手感 */
+.ui .btn{
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 12px; /* 只影响点击区域，不会看到背景 */
+}
+.ui .badge{ padding: 4px 10px; border-radius: 12px; }
+
+.ui .btn:hover{ opacity: .9; }
+.ui .btn:active{ transform: translateY(1px); }
+/* 统一顶部 UI 的字号 */
+:root { --ui-font-size: clamp(14px, 1.2vw, 20px); }  /* 你也可以换成固定值，比如 18px */
+
+.ui{
+  font-size: var(--ui-font-size);   /* 设定一个统一的父级字号 */
+}
+
+.ui .btn,
+.ui .badge{
+  font-size: 1em;                   /* 明确继承父级 */
+  line-height: 1;                   /* 避免行高不同导致看起来大小不一 */
+  font-weight: 700;                 /* 如果需要统一粗细 */
+  letter-spacing: 0.2px;
+}
 
     /* AI 回复气泡 */
     .bubble {
@@ -106,13 +160,37 @@
     }
 
     /* 词语云容器：占满整屏，内部每个 tag 绝对定位在环上 */
-    .cloud {
-      position:absolute;
-      inset:0;
-      z-index:4;
-      pointer-events:none; /* 只让 tag 本身可点 */
-    }
-    .tag {
+    .cloud{
+  position:absolute;
+  inset:0;           /* 铺满屏 */
+  z-index:4;
+  pointer-events:none;
+}
+  /* 词语云标签：统一字号、透明底、橘色 */
+.tag{
+  position:absolute;
+  pointer-events:auto;
+  display:inline-block;     /* 让容器刚好包裹文字 */
+  padding:0;                /* 无额外留白 */
+  background:transparent;
+  border:none;
+  color:#FF8A00;            /* 橘色 */
+  font-size:20px;           /* ← 统一字号（可按需改 18/22） */
+  font-weight:700;          /* 统一粗细 */
+  line-height:1;            /* 减少垂直溢出 */
+  letter-spacing:0.2px;
+  text-shadow:0 1px 2px rgba(0,0,0,.35); /* 可读性 */
+}
+
+
+/* 可选：去掉类型边框颜色（之前我们给过） */
+.tag[data-type="abstract"],
+.tag[data-type="literary"]{
+  border: none;
+
+}
+
+    /* .tag {
       position:absolute;
       padding:6px 10px;
       border-radius:999px;
@@ -135,7 +213,7 @@
     }
     .tag:hover {
       filter:brightness(1.15);
-    }
+    } */
   </style>
 </head>
 <body>
@@ -145,14 +223,15 @@
     <div id="bg"></div>
 
     <!-- 初始人格插画（neutral 版本） -->
-    <img id="persona" class="persona" src="./img/person-neutral.svg" alt="persona" />
+    <img id="persona" class="persona" src="./img/person-neutral.png" alt="persona" />
 
     <!-- 左上角 UI：当前数值与模式，可选手动按钮 -->
     <div class="ui">
-      <button class="btn" data-type="abstract">+ Abstract</button>
-      <button class="btn" data-type="literary">+ Literary</button>
-      <span class="badge" id="stats">Abstract 0 · Literary 0</span>
-      <span class="badge" id="mode">Neutral</span>
+      <!-- <button class="btn" data-type="abstract">+ Abstract</button>
+      <button class="btn" data-type="literary">+ Literary</button> -->
+      <button class="btn" id="reset-btn">Reset</button>
+      <!-- <span class="badge" id="stats">Abstract 0 · Literary 0</span>
+      <span class="badge" id="mode">Neutral</span> -->
     </div>
 
     <!-- 词语云（环绕在人物附近） -->

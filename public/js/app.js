@@ -4,17 +4,39 @@
 import './ui/anim.js';
 import './bg/p5-scene.js';
 import { ensureAI, chatOnce } from './ai-webllm.js';
+// —— 以 1920×1080 作为“设计画布” —— //
+// const DESIGN_W = 1920;
+// const DESIGN_H = 1080;
+
+// // 背景与人物都是 cover 居中显示时：把“设计坐标”映射到屏幕坐标
+// function designToScreenMapper() {
+//   const W = window.innerWidth;
+//   const H = window.innerHeight;
+//   const scale = Math.max(W / DESIGN_W, H / DESIGN_H); // cover：用最大比例
+//   const offsetX = (W - DESIGN_W * scale) / 2;
+//   const offsetY = (H - DESIGN_H * scale) / 2;
+//   return (dx, dy) => ({
+//     x: offsetX + dx * scale,
+//     y: offsetY + dy * scale,
+//     scale
+//   });
+// }
 
 const STATE = {
   abstract:   0,
   literary:   0,
-  transformed:null, // null | 'abstract' | 'literary'
+  transformed:null,   // null | 'abstract' | 'literary'
   mode:       'neutral',
   aiReady:    false,
-  aiInitTried:false
+  aiInitTried:false,
+  awakenedOnce:false  // ← 新增：是否已经出现过觉醒
 };
-const THRESHOLD = 15;
 
+// const THRESHOLD = 15;  // ← 删掉旧阈值
+
+// 新阈值
+const INIT_AWAKEN_DIFF = 5; // 首次进入觉醒的门槛（≥5）
+const STABLE_DIFF = 3;      // 之后保持/切换的门槛（>3）
 const statsEl  = document.getElementById('stats');
 const modeEl   = document.getElementById('mode');
 const cloudEl  = document.getElementById('cloud');
@@ -68,30 +90,47 @@ function persist() {
 }
 
 // --- 模式与 UI（只用于上方 badge 展示） ---
-function computeMode() {
-  const diff = STATE.abstract - STATE.literary;
-  if (STATE.transformed) {
-    return STATE.transformed === 'abstract' ? 'trans_abstract' : 'trans_literary';
-  }
-  if (Math.max(STATE.abstract, STATE.literary) >= THRESHOLD) {
-    return diff >= 0 ? 'trans_abstract' : 'trans_literary';
-  }
-  if (Math.abs(diff) >= 3) {
-    return diff > 0 ? 'lean_abstract' : 'lean_literary';
-  }
-  return 'neutral';
+function computeModeLabel() {
+  if (STATE.transformed === 'abstract') return 'Awakened: Abstract';
+  if (STATE.transformed === 'literary') return 'Awakened: Literary';
+  return 'Neutral';
 }
 
 function updateBadges() {
   statsEl.textContent = `Abstract ${STATE.abstract} · Literary ${STATE.literary}`;
-  STATE.mode = computeMode();
-  modeEl.textContent = ({
-    neutral       : 'Neutral',
-    lean_abstract : 'Leaning Abstract',
-    lean_literary : 'Leaning Literary',
-    trans_abstract: 'Abstract Awakened',
-    trans_literary: 'Literary Awakened'
-  })[STATE.mode] || 'Neutral';
+  modeEl.textContent  = computeModeLabel();
+  // 为了兼容你其它地方若还读取 STATE.mode，这里同步一下语义
+  STATE.mode = (STATE.transformed === 'abstract')
+    ? 'trans_abstract'
+    : (STATE.transformed === 'literary')
+      ? 'trans_literary'
+      : 'neutral';
+}
+function updateAwakenStateByRules() {
+  const diff = STATE.abstract - STATE.literary;  // >0 抽象领先，<0 文雅领先
+  let next = STATE.transformed;
+
+  if (!STATE.awakenedOnce && STATE.transformed == null) {
+    // 首次进入觉醒：必须 |diff| ≥ 5
+    if (Math.abs(diff) >= INIT_AWAKEN_DIFF) {
+      next = (diff > 0) ? 'abstract' : 'literary';
+    } else {
+      next = null;
+    }
+  } else {
+    // 之后的维持/切换：用 >3 的门槛
+    if (diff > STABLE_DIFF)       next = 'abstract';
+    else if (-diff > STABLE_DIFF) next = 'literary';
+    else                          next = null;     // 回到中立
+  }
+
+  if (next !== STATE.transformed) {
+    const prev = STATE.transformed;
+    STATE.transformed = next;
+    if (prev == null && next != null) STATE.awakenedOnce = true;
+    // 切换主题（p5 会播放坍塌过场）
+    swapTheme(next || 'neutral');
+  }
 }
 
 // --- Reset：恢复初始状态 ---
@@ -121,43 +160,86 @@ function offlineReply(clickedType) {
 function systemStylePrompt(clickedType) {
   if (clickedType === 'abstract') {
     return `
-You are a Gen Alpha / late Gen Z style persona obsessed with street culture, rap, gaming and internet memes.
-Your tone:
-- lots of modern slang, playful, slightly chaotic
-- you may use informal spelling, "bro", "fr", "lowkey", etc.
-- no corporate or serious academic tone
-- answer in English, one short line, max 30 words.
-`;
-  } else {
-    return `
-You are an elegant, literary persona.
-Your tone:
-- polite, calm and respectful
-- subtle, graceful wording, maybe a light metaphor
-- no slang, no emojis, no memes
-- answer in English, one short line, max 30 words.
-`;
+You are a Gen Alpha / internet-native persona into memes, rap cadence, and gaming slang.
+Write in a playful, slangy, meme-aware voice (skibidi, sigma, rizz, gyat, Ohio vibes, etc.) but keep it readable.
+
+HARD RULES:
+- Output exactly ONE sentence in English.
+- It MUST be a grammatical sentence (not a fragment).
+- NO hashtags, NO emojis, NO lists, NO markdown.
+- 6–22 words max.
+
+EXAMPLES:
+- "Lowkey that move was skibidi-coded, not gonna lie."
+- "Your rizz is on cooldown, but the vibe still goes hard."
+- "Sigma focus locked in, the chaos kinda makes sense."`;
   }
+
+  return `
+You are an elegant and polite literary persona.
+Write with calm flow, clear grammar, and subtle grace—like refined contemporary prose.
+
+HARD RULES:
+- Output exactly ONE sentence in English.
+- It MUST be a grammatical sentence (not a fragment).
+- NO hashtags, NO emojis, NO lists, NO markdown.
+- 6–22 words max.
+
+EXAMPLES:
+- "There is a quiet steadiness here that invites gentler attention."
+- "With measured confidence, the moment arranges itself into clarity."
+- "Polite words can carry warmth without losing their precision."`;
 }
+
 
 // 可选：给模型的 user 指令，也按 type 区分一下
 function userPrompt(clickedType) {
-  if (clickedType === 'abstract') {
-    return "React to the current vibe in one short, slangy line, like a Gen Alpha into rap, games and memes.";
-  } else {
-    return "React to the current vibe in one short, polite and elegant line, with a touch of literary flavor.";
-  }
+  return clickedType === 'abstract'
+    ? "Reply in one slangy, meme-aware sentence that fits the current vibe; obey the hard rules."
+    : "Reply in one polite, elegant sentence with smooth flow; obey the hard rules.";
 }
+function enforceStyle(text, clickedType) {
+  if (!text) return '…';
+
+  // 1) 只取第一行
+  let s = String(text).split('\n')[0].trim();
+
+  // 2) 去掉所有 # 号（防止 hashtag）
+  s = s.replace(/#/g, '').replace(/\s{2,}/g, ' ').trim();
+
+  // 3) 只保留第一句（用常见终止符切分）
+  const firstSentence = s.split(/(?<=[.!?。！？])\s+/)[0] || s;
+
+  // 4) 确保以终止符结尾（. ! ?）
+  let out = firstSentence.trim();
+  if (!/[.!?]$/.test(out)) out += '.';
+
+  // 5) 长度兜底（与 prompt 的 6–22 词一致，可自行调整）
+  const words = out.split(/\s+/);
+  if (words.length < 3) {
+    // 太短时给一点点“尾音”以免像片段
+    out = out.replace(/[.!?]$/, '') + ', for real.';
+  } else if (words.length > 24) {
+    out = words.slice(0, 24).join(' ');
+    if (!/[.!?]$/.test(out)) out += '.';
+  }
+  return out;
+}
+
 
 // --- 统一点击入口：按钮/词语云都调用这个 --- 
 export async function personaClick(type) {
   if (type === 'abstract') STATE.abstract++;
   if (type === 'literary') STATE.literary++;
 
+  // 先按新规则更新觉醒/中立/切换
+  updateAwakenStateByRules();
+
+  // 再更新 UI 徽章并持久化
   updateBadges();
   persist();
 
-  // 首次懒加载 AI
+  // === 以下保持你的原有 AI 逻辑不变 ===
   if (!STATE.aiReady && !STATE.aiInitTried) {
     STATE.aiInitTried = true;
     bubble("Loading the dialogue engine… first time can be slow.");
@@ -171,7 +253,6 @@ export async function personaClick(type) {
     }
   }
 
-  // 生成回复
   try {
     let text;
     if (STATE.aiReady) {
@@ -179,25 +260,19 @@ export async function personaClick(type) {
         { role: "system", content: systemStylePrompt(type) },
         { role: "user",   content: userPrompt(type) }
       ];
-      text = await chatOnce(messages, { temperature: 0.9, max_tokens: 60 });
-      if (!text) text = offlineReply(type);
+      text = await chatOnce(messages, { temperature: 0.95, max_tokens: 60 });
+      text = enforceStyle(text, type);
+      if (!text) text = enforceStyle(offlineReply(type), type);
     } else {
-      text = offlineReply(type);
+      text = enforceStyle(offlineReply(type), type);
     }
     bubble(text);
   } catch (err) {
     console.warn("AI chat error:", err);
-    bubble(offlineReply(type));
-  }
-
-  // 觉醒触发：某一值 >= 15
-  const maxVal = Math.max(STATE.abstract, STATE.literary);
-  if (!STATE.transformed && maxVal >= THRESHOLD) {
-    STATE.transformed = STATE.abstract >= STATE.literary ? 'abstract' : 'literary';
-    swapTheme(STATE.transformed);
-    persist();
+    bubble(enforceStyle(offlineReply(type), type));
   }
 }
+
 
 window.personaClick = personaClick;
 
@@ -222,41 +297,125 @@ let CLOUD_TOKENS = [];
 
 function randomBetween(a,b){ return Math.random()*(b-a)+a; }
 
-function renderRing() {
+// function renderRing() {
+//   if (!CLOUD_TOKENS.length) return;
+//   cloudEl.innerHTML = '';
+
+//   const cx = window.innerWidth / 2;
+//   const cy = window.innerHeight * 0.6;
+//   const radius = Math.min(window.innerWidth, window.innerHeight) * 0.35;
+
+//   CLOUD_TOKENS.forEach((t, i) => {
+//     const angle = (2 * Math.PI * i) / CLOUD_TOKENS.length;
+//     const x = cx + radius * Math.cos(angle);
+//     const y = cy + radius * Math.sin(angle);
+
+//     const span = document.createElement('span');
+//     span.className = 'tag';
+//     span.dataset.type = t.type;      // 'abstract' | 'literary'
+//     span.textContent = t.text;
+
+//     const size = Math.round(randomBetween(12, 26));
+//     span.style.fontSize   = size + 'px';
+//     span.style.fontWeight = size > 22 ? '700' : (size > 18 ? '600' : '500');
+//     span.style.left = x + 'px';
+//     span.style.top  = y + 'px';
+//     span.style.transform =
+//       'translate(-50%, -50%) rotate(' + randomBetween(-6, 6) + 'deg)';
+
+//     span.addEventListener('click', () => {
+//       press(span);
+//       personaClick(t.type);
+//       gsap.to(span, { y:-6, duration:.12, yoyo:true, repeat:1, ease:"power2.out" });
+//     });
+
+//     cloudEl.appendChild(span);
+//   });
+// }
+// 以 1920×1080 的设计坐标来排布，再映射到屏幕（背景 cover 居中）
+const DESIGN_W = 1920, DESIGN_H = 1080;
+function designToScreenMapper(){
+  const W = window.innerWidth, H = window.innerHeight;
+  const scale = Math.max(W / DESIGN_W, H / DESIGN_H); // cover
+  const ox = (W - DESIGN_W * scale) / 2;
+  const oy = (H - DESIGN_H * scale) / 2;
+  return (dx, dy) => ({ x: ox + dx * scale, y: oy + dy * scale, scale });
+}
+
+// —— 按 1920×1080 调你想要的“括号”轨迹 ——
+// 中轴线（人物中心）:
+const CX_DESIGN = 960;
+const CY_DESIGN = 620;  // 稍偏下居中
+// 距离与形状
+let INNER_GAP_DESIGN = 480;  // 离中轴线距离（越大离人物越远）
+let BULGE_DESIGN     = 100;  // 中段鼓出量（越大越像“{}”）
+let TOP_Y_DESIGN     = 300;  // 上边界
+let BOTTOM_Y_DESIGN  = 940;  // 下边界
+
+function renderBrackets(){
   if (!CLOUD_TOKENS.length) return;
   cloudEl.innerHTML = '';
 
-  const cx = window.innerWidth / 2;
-  const cy = window.innerHeight * 0.6;
-  const radius = Math.min(window.innerWidth, window.innerHeight) * 0.35;
+  const W = window.innerWidth, H = window.innerHeight;
+  const toScreen = designToScreenMapper();
 
-  CLOUD_TOKENS.forEach((t, i) => {
-    const angle = (2 * Math.PI * i) / CLOUD_TOKENS.length;
-    const x = cx + radius * Math.cos(angle);
-    const y = cy + radius * Math.sin(angle);
+  const left = [], right = [];
+  CLOUD_TOKENS.forEach((t,i)=> (i%2===0?left:right).push(t));
 
-    const span = document.createElement('span');
-    span.className = 'tag';
-    span.dataset.type = t.type;      // 'abstract' | 'literary'
-    span.textContent = t.text;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-    const size = Math.round(randomBetween(12, 26));
-    span.style.fontSize   = size + 'px';
-    span.style.fontWeight = size > 22 ? '700' : (size > 18 ? '600' : '500');
-    span.style.left = x + 'px';
-    span.style.top  = y + 'px';
-    span.style.transform =
-      'translate(-50%, -50%) rotate(' + randomBetween(-6, 6) + 'deg)';
+  function placeSide(list, side){
+    const n = list.length; if(!n) return;
 
-    span.addEventListener('click', () => {
-      press(span);
-      personaClick(t.type);
-      gsap.to(span, { y:-6, duration:.12, yoyo:true, repeat:1, ease:"power2.out" });
-    });
+    for(let k=0;k<n;k++){
+      const t = (k+0.5)/n; // 0..1
+      const yD = TOP_Y_DESIGN + t*(BOTTOM_Y_DESIGN - TOP_Y_DESIGN) + (Math.random()*10-5);
 
-    cloudEl.appendChild(span);
-  });
+      // 归一到 -1..1，控制鼓出
+      const v = (yD - CY_DESIGN)/((BOTTOM_Y_DESIGN - TOP_Y_DESIGN)/2);
+      const c = 1 - Math.pow(Math.abs(v), 1.6);
+
+      const offsetXD = INNER_GAP_DESIGN + c * BULGE_DESIGN;
+      const xD = side==='left' ? (CX_DESIGN - offsetXD) : (CX_DESIGN + offsetXD);
+
+      let {x,y} = toScreen(xD, yD);
+
+      // —— 保底：别出屏幕（左右/上下各留 8px 安全边）——
+      x = clamp(x, 8, W-8);
+      y = clamp(y, 8, H-8);
+
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.dataset.type = list[k].type;
+      tag.textContent = list[k].text;
+
+      // const size = Math.round(12 + Math.random()*14);
+      // tag.style.fontSize = size+'px';
+      // tag.style.fontWeight = size>22?'700':(size>18?'600':'500');
+      const baseRot = side==='left' ? -8 : 8;
+      tag.style.left = x+'px';
+      tag.style.top  = y+'px';
+      // 改为水平
+      tag.style.transform = 'translate(-50%, -50%)';
+
+      tag.addEventListener('click', ()=>{
+        press(tag);
+        personaClick(tag.dataset.type);
+        gsap.to(tag,{ y:-6, duration:.12, yoyo:true, repeat:1, ease:"power2.out" });
+      });
+
+      cloudEl.appendChild(tag);
+    }
+  }
+
+  placeSide(left,'left');
+  placeSide(right,'right');
+
+  // 调试：取消注释可以在控制台看数量
+  // console.log('tags rendered:', document.querySelectorAll('.tag').length);
 }
+
+
 
 fetch('./tokens.json')
   .then(r => r.json())
@@ -267,17 +426,23 @@ fetch('./tokens.json')
       [list[i], list[j]] = [list[j], list[i]];
     }
     CLOUD_TOKENS = list;
-    renderRing();
+    renderBrackets();
   })
   .catch(err => {
     console.warn("Failed to load tokens.json:", err);
   });
 
-window.addEventListener('resize', () => {
-  renderRing();
-});
+window.addEventListener('resize', renderBrackets);
+
+// 如果 persona 是一张大图（1920×1080），等它加载完再排一次更稳
+const personImg = document.getElementById('persona');
+if (personImg && !personImg.complete) {
+  personImg.addEventListener('load', renderBrackets, { once: true });
+}
 
 // 初始化
 restore();
+updateAwakenStateByRules();         // ← 新增：让恢复的计数立刻套用新规则
 updateBadges();
 swapTheme(STATE.transformed || 'neutral');
+

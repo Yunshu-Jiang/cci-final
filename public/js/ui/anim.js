@@ -51,42 +51,41 @@ window.__bubble = function bubble(text) {
 
 // 3. 主题切换：同时切换人物图片 + 背景 class，并加闪光与缩放
 window.__swapTheme = function swapTheme(theme) {
-  // theme: 'neutral' | 'abstract' | 'literary'
   const srcMap = {
-    neutral: "./img/person-neutral.svg",
-    abstract:"./img/person-abstract.svg",
-    literary:"./img/person-literary.svg"
+    neutral: "./img/person-neutral.png",
+    abstract:"./img/person-abstract.png",
+    literary:"./img/person-literary.png"
   };
   const src = srcMap[theme] || srcMap.neutral;
 
-  // 更新 wrap 的主题 class
+  const wrapEl = document.getElementById('wrap');
+  const persona = document.getElementById('persona');
+  const flashEl = document.getElementById('flash');
+
+  // 识别旧主题（用于 p5 过场）
+  let prev = null;
+  if (wrapEl.classList.contains('theme-abstract')) prev = 'abstract';
+  else if (wrapEl.classList.contains('theme-literary')) prev = 'literary';
+  else if (wrapEl.classList.contains('theme-neutral')) prev = 'neutral';
+
+  // 如果主题没变，直接返回（初始化时也会走到这里）
+  if (prev === theme) return;
+
+  // 切换 CSS 背景类（新背景先到位，p5 画旧背景碎片在上层坍塌）
   wrapEl.classList.remove('theme-neutral','theme-abstract','theme-literary');
   wrapEl.classList.add('theme-' + (theme in srcMap ? theme : 'neutral'));
 
-  // 小型演出：闪一下 + 人物缩放
+  // 闪光 + 人物小弹动（与你之前一致）
   const tl = gsap.timeline();
   tl.set(flashEl, { background: 'rgba(255,255,255,0)' })
-    .to(flashEl, {
-      background: 'rgba(255,255,255,0.25)',
-      duration: 0.12,
-      ease: 'power1.out'
-    })
-    .to(flashEl, {
-      background: 'rgba(255,255,255,0)',
-      duration: 0.35,
-      ease: 'power3.in'
-    }, ">-0.02")
-    .to(persona, {
-      scale: 0.9,
-      duration: 0.12,
-      ease: 'power2.in'
-    }, 0)
-    .add(() => {
-      persona.src = src;
-    })
-    .to(persona, {
-      scale: 1.06,
-      duration: 0.22,
-      ease: 'back.out(2)'
-    }, ">-0.05");
+    .to(flashEl, { background: 'rgba(255,255,255,0.25)', duration: 0.12, ease: 'power1.out' })
+    .to(flashEl, { background: 'rgba(255,255,255,0)', duration: 0.35, ease: 'power3.in' }, ">-0.02")
+    .to(persona, { scale: 0.9, duration: 0.12, ease: 'power2.in' }, 0)
+    .add(() => { persona.src = src; })
+    .to(persona, { scale: 1.06, duration: 0.22, ease: 'back.out(2)' }, ">-0.05");
+
+  // 触发 p5 的坍塌过场（旧 → 新）
+  if (prev && window.__p5bg && typeof window.__p5bg.collapseFromTo === 'function') {
+    window.__p5bg.collapseFromTo(prev, theme);
+  }
 };
