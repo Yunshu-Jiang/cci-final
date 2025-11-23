@@ -3,10 +3,6 @@
 // 暴露 ensureAI / chatOnce 给 app.js 使用
 import { CreateMLCEngine } from "../lib/web-llm/index.js";
 
-engine = await CreateMLCEngine(
-  "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
-  { use_web_worker: true, initProgressCallback }
-);
 
 let engine = null;
 
@@ -28,9 +24,9 @@ export async function ensureAI() {
 
   // 0.2+ 版本：CreateMLCEngine(appConfig, engineConfig)
   engine = await CreateMLCEngine(
-    { model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC" }, // 只放模型 ID
-    { runtime, use_web_worker: true, initProgressCallback } // 这里指定 runtime & 进度
-  );
+  "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+  { use_web_worker: true, initProgressCallback }
+);
 
   return engine;
 }
