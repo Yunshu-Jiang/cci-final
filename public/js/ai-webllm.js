@@ -15,8 +15,29 @@ const MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
 
 // 懒加载：第一次真正需要 AI 时再去加载模型
 export async function ensureAI() {
-  if (ready && engine) return engine;
-  if (initPromise) return initPromise;
+  if (engine) return engine;
+
+  // 给无 WebGPU 的设备一个明确提示，但不要抛错
+  if (!('gpu' in navigator)) {
+    console.log("No WebGPU; will try WASM fallback.");
+  }
+  if (!crossOriginIsolated) {
+    console.warn("Page is not crossOriginIsolated; WASM fallback will fail.");
+  }
+
+  engine = await CreateMLCEngine(
+    {
+      model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",   // 你的模型 ID
+      initProgressCallback: (p) => console.log("[WebLLM]", p.text)
+      // 不要写 runtime，让它自动选 webgpu 或 wasm
+    },
+    {
+      // 建议用 worker，WASM/CPU 下更稳
+      use_web_worker: true
+    }
+  );
+  return engine;
+}
 
   // 可选：加载过程中的进度回调，只打印到 console
   const initProgressCallback = (report) => {
