@@ -12,30 +12,30 @@ let engine = null;
 export async function ensureAI() {
   if (engine) return engine;
 
-  // 情况说明：没有 WebGPU -> 尝试 WASM，需要 crossOriginIsolated
-  if (!('gpu' in navigator)) {
-    console.log("[WebLLM] No WebGPU; will try WASM fallback.");
-  }
-  if (!crossOriginIsolated) {
-    // 不满足隔离，WASM 会失败：给出可操作提示
+  const hasWebGPU = ('gpu' in navigator);
+  const canUseWasm = crossOriginIsolated;  // WASM 需要 cross-origin isolation
+
+  if (!hasWebGPU && !canUseWasm) {
+    // 不满足 WASM 的前置条件，直接给用户清晰提示
     throw new Error(
-      "This page isn't crossOriginIsolated. Open in your system browser (Safari/Chrome) instead of an in-app browser."
+      "This page isn't cross-origin isolated in your browser. Open the link in Safari/Chrome (system browser), not an in-app browser."
     );
   }
 
-  engine = await CreateMLCEngine(
-    {
-      model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
-      initProgressCallback: (p) => console.log("[WebLLM]", p.text)
-      // 不设置 runtime，库会自动在 webgpu/wasm 之间选择
-    },
-    {
-      use_web_worker: true
-    }
-  );
+  // 让引擎自动选：有 WebGPU 用 WebGPU；否则用 WASM
+  const runtime = hasWebGPU ? "webgpu" : "wasm";
+
+  // 有些版本把 runtime 放在第二个参数，也有版本读第一个参数；两处都传，向后兼容
+  const appCfg = {
+    model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    initProgressCallback: (p) => console.log("[WebLLM]", p.text),
+    runtime
+  };
+  const engCfg = { runtime, use_web_worker: true };
+
+  engine = await CreateMLCEngine(appCfg, engCfg);
   return engine;
 }
-
   // 可选：加载过程中的进度回调，只打印到 console
   const initProgressCallback = (report) => {
     console.log("[WebLLM init]", report.text);
