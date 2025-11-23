@@ -62,7 +62,7 @@ export async function ensureAI() {
     });
 
   return initPromise;
-}
+
 
 // 单轮对话：OpenAI 风格 messages
 export async function chatOnce(messages, opts = {}) {
