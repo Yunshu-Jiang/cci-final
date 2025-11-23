@@ -4,35 +4,32 @@
 
 // 这里用的是相对路径：ai-webllm.js 在 public/js/ 下
 // ../ 回到 public/，再进入 lib/web-llm/index.js
+// public/js/ai-webllm.js
 import { CreateMLCEngine } from "../lib/web-llm/index.js";
 
 let engine = null;
-let ready  = false;
-let initPromise = null;
 
-// 你要用的模型 ID（和 HuggingFace / 模型文件夹名称一致）
-const MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
-
-// 懒加载：第一次真正需要 AI 时再去加载模型
 export async function ensureAI() {
   if (engine) return engine;
 
-  // 给无 WebGPU 的设备一个明确提示，但不要抛错
+  // 情况说明：没有 WebGPU -> 尝试 WASM，需要 crossOriginIsolated
   if (!('gpu' in navigator)) {
-    console.log("No WebGPU; will try WASM fallback.");
+    console.log("[WebLLM] No WebGPU; will try WASM fallback.");
   }
   if (!crossOriginIsolated) {
-    console.warn("Page is not crossOriginIsolated; WASM fallback will fail.");
+    // 不满足隔离，WASM 会失败：给出可操作提示
+    throw new Error(
+      "This page isn't crossOriginIsolated. Open in your system browser (Safari/Chrome) instead of an in-app browser."
+    );
   }
 
   engine = await CreateMLCEngine(
     {
-      model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",   // 你的模型 ID
+      model_id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
       initProgressCallback: (p) => console.log("[WebLLM]", p.text)
-      // 不要写 runtime，让它自动选 webgpu 或 wasm
+      // 不设置 runtime，库会自动在 webgpu/wasm 之间选择
     },
     {
-      // 建议用 worker，WASM/CPU 下更稳
       use_web_worker: true
     }
   );
