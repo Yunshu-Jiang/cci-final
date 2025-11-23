@@ -2,7 +2,10 @@
 // 使用本地的 WebLLM 构建（public/lib/web-llm/index.js）
 // 暴露 ensureAI / chatOnce 给 app.js 使用
 
-import { CreateMLCEngine } from "../lib/web-llm/index.js";
+engine = await CreateMLCEngine(
+  "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+  { use_web_worker: true, initProgressCallback }
+);
 
 let engine = null;
 
