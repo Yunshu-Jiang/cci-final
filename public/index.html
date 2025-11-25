@@ -135,20 +135,38 @@
 }
 
     /* AI 回复气泡 */
+        /* AI 回复气泡：固定在底部 1/5，白底黑字 */
     .bubble {
       position:absolute;
       left:50%;
-      bottom:23%;
+      bottom:20px;
       transform:translateX(-50%);
-      padding:10px 14px;
-      background:#191a20;
-      border:1px solid #2a2a31;
-      border-radius:12px;
+      box-sizing:border-box;
+
+      /* 尺寸：高度约为视口高度的 1/5，宽度最多容纳 ~30 个字 */
+      width: clamp(420px, 50vw, 960px);
+      height:15vh;
+      max-height:20vh;
+
+      padding:16px 20px;
+      background:rgba(255,255,255,0.94);
+      color:#111;
+      border-radius:18px 18px 18px 18px;
+      border:1px solid rgba(0,0,0,0.25);
+
       z-index:5;
       pointer-events:none;
-      white-space:nowrap;
-      max-width:80vw;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      text-align:left;
+      font-size:clamp(14px, 1.2vw, 18px);
+      line-height:1.5;
+      overflow:hidden;       /* 超出部分裁掉 */
+      white-space:normal;    /* 允许自动换行 */
     }
+
 
     /* 变身闪光层 */
     .flash {
@@ -214,6 +232,89 @@
     .tag:hover {
       filter:brightness(1.15);
     } */
+  
+  /* --- Intro 开场悬浮窗 --- */
+.intro {
+  position:absolute;
+  inset:0;
+  z-index:20;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(0,0,0,0.12); /* 轻微遮罩，可删 */
+}
+
+.intro-card{
+  width: min(50vw, 900px);
+  height: min(50vh, 520px);
+  padding: 28px 28px 22px;
+  box-sizing: border-box;
+
+  background: rgba(255,255,255,0.82); /* 白底半透明 */
+  color:#111;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 22px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.25);
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap: 18px;
+  text-align:center;
+}
+
+.intro-text{
+  font-size: clamp(18px, 2vw, 28px);
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.intro-start{
+  border: 1px solid rgba(0,0,0,0.25);
+  background: rgba(255,255,255,0.65);
+  color:#111;
+  padding: 10px 18px;
+  border-radius: 14px;
+  cursor:pointer;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.intro-start:hover{ filter: brightness(1.02); }
+.intro-start:active{ transform: translateY(1px); }
+
+/* 开始前：锁住交互（安全兜底，JS 也会挡） */
+.wrap.is-locked .tag { pointer-events:none; opacity:.65; }
+.wrap.is-locked #reset-btn { pointer-events:none; opacity:.65; }
+
+/* --- First-awaken toast (top-right) --- */
+.toast {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 30;
+  pointer-events: none;
+
+  width: min(420px, 44vw);
+  padding: 14px 16px;
+  box-sizing: border-box;
+
+  background: rgba(255,255,255,0.82);
+  color: #111;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.18);
+
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.toast .toast-zh { font-weight: 700; }
+.toast .toast-en { margin-top: 6px; opacity: 0.85; }
+
+
   </style>
 </head>
 <body>
@@ -233,6 +334,15 @@
       <span class="badge" id="stats" style="display:none">Abstract 0 · Literary 0</span>
       <span class="badge" id="mode" style="display:none">Neutral</span>
     </div>
+
+    <!-- Intro 开场悬浮窗 -->
+    <div id="intro" class="intro" aria-label="intro">
+     <div class="intro-card">
+      <div class="intro-text">你想让它听到什么？<br/>What do you want it to hear?</div>
+      <button id="start-btn" class="intro-start">Start</button>
+     </div>
+    </div>
+
 
     <!-- 词语云（环绕在人物附近） -->
     <div id="cloud" class="cloud" aria-label="word-cloud"></div>

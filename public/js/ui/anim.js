@@ -4,48 +4,117 @@
 const wrapEl  = document.getElementById('wrap');
 const persona = document.getElementById('persona');
 const flashEl = document.getElementById('flash');
+let bubbleEl = null;
+let bubbleHideTimer = null;
 
 // 1. 按钮/词语点击的按压反馈
+// 1. 按钮/词语点击的按压反馈
 window.__press = function press(el) {
-  gsap.fromTo(el,
+  gsap.fromTo(
+    el,
     { scale: 1 },
-    { scale: 0.92, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.out" }
+    {
+      scale: 0.86,
+      duration: 0.1,
+      yoyo: true,
+      repeat: 1,
+      ease: "power2.out"
+    }
   );
 };
 
-// 2. AI 回复气泡
-window.__bubble = function bubble(text) {
-  const b = document.createElement('div');
-  b.className = 'bubble';
-  b.textContent = text;
-  wrapEl.appendChild(b);
 
-  // 估算阅读时间：按大约“每秒 8 个字符”算，
-  // 最少停留 2 秒，最多 6 秒。
+// 2. AI 回复气泡
+// 2. AI 回复气泡：固定在底部 1/5，支持 loading 状态
+window.__bubble = function bubble(text, opts = {}) {
+  const { isLoading = false } = opts;
+
+  // 如果还没有气泡，就创建一个；如果有，就复用
+  if (!bubbleEl) {
+    bubbleEl = document.createElement('div');
+    bubbleEl.className = 'bubble';
+    wrapEl.appendChild(bubbleEl);
+  }
+
+  bubbleEl.textContent = text;
+
+  // 清掉之前的隐藏定时器 & 动画
+  if (bubbleHideTimer) {
+    clearTimeout(bubbleHideTimer);
+    bubbleHideTimer = null;
+  }
+  gsap.killTweensOf(bubbleEl);
+
+  // 轻微淡入 + scale 动画（不改位置，只在底部区域内动）
+  gsap.fromTo(
+    bubbleEl,
+    { opacity: 0, scale: 0.96 },
+    {
+      opacity: 1,
+      scale: 1,
+      duration: 0.25,
+      ease: "power2.out"
+    }
+  );
+
+  // loading 状态：只显示，不自动消失，等下一次调用覆盖它
+  if (isLoading) return;
+
+  // 正常回复：按字数估算阅读时间，再自动淡出并销毁
   const len = (text || '').length;
   const readingSeconds = Math.max(2, Math.min(6, len / 8));
 
-  gsap.fromTo(
-    b,
-    { y: 0, opacity: 0, scale: 0.9 },
-    {
-      y: -60,
-      opacity: 1,
-      scale: 1,
+  bubbleHideTimer = setTimeout(() => {
+    gsap.to(bubbleEl, {
+      opacity: 0,
       duration: 0.35,
-      ease: "back.out(1.6)",
-      onComplete() {
-        gsap.to(b, {
-          y: -110,
-          opacity: 0,
-          duration: 0.6,
-          delay: readingSeconds,   // ⬅️ 这里由原来的 0.8s 改成 readingSeconds
-          ease: "power2.in",
-          onComplete: () => b.remove()
-        });
+      ease: "power2.in",
+      onComplete: () => {
+        if (bubbleEl) {
+          bubbleEl.remove();
+          bubbleEl = null;
+        }
       }
-    }
+    });
+  }, readingSeconds * 1000);
+};
+
+// 2.5 右上角提示 toast（第一次觉醒用）
+window.__toast = function toast(message, opts = {}) {
+  const { duration = 3.2 } = opts;
+
+  // 单例：有就先删
+  const old = document.querySelector('.toast');
+  if (old) old.remove();
+
+  const t = document.createElement('div');
+  t.className = 'toast';
+
+  // 支持传 string 或 { zh, en }
+  if (typeof message === 'string') {
+    t.textContent = message;
+  } else {
+    const zh = message.zh || '';
+    const en = message.en || '';
+    t.innerHTML = `<div class="toast-zh">${zh}</div><div class="toast-en">${en}</div>`;
+  }
+
+  wrapEl.appendChild(t);
+
+  gsap.fromTo(
+    t,
+    { opacity: 0, y: -8, scale: 0.98 },
+    { opacity: 1, y: 0, scale: 1, duration: 0.22, ease: "power2.out" }
   );
+
+  gsap.to(t, {
+    opacity: 0,
+    y: -10,
+    duration: 0.28,
+    delay: duration,
+    ease: "power2.in",
+    onComplete: () => t.remove()
+  });
 };
 
 

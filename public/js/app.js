@@ -29,6 +29,7 @@ const STATE = {
   mode:       'neutral',
   aiReady:    false,
   aiInitTried:false,
+  started:    false,
   awakenedOnce:false  // ← 新增：是否已经出现过觉醒
 };
 
@@ -41,11 +42,47 @@ const statsEl  = document.getElementById('stats');
 const modeEl   = document.getElementById('mode');
 const cloudEl  = document.getElementById('cloud');
 const resetBtn = document.getElementById('reset-btn');
+const wrapEl   = document.getElementById('wrap');
+const introEl  = document.getElementById('intro');
+const startBtn = document.getElementById('start-btn');
+
+function setStarted(v){
+  STATE.started = v;
+  if (wrapEl) wrapEl.classList.toggle('is-locked', !v);
+
+  if (introEl) {
+    if (v) {
+      // 关掉 intro（有 gsap 就做个淡出）
+      if (window.gsap) {
+        gsap.to(introEl, { opacity: 0, duration: 0.25, ease: "power2.out", onComplete: () => introEl.style.display = 'none' });
+      } else {
+        introEl.style.display = 'none';
+      }
+    } else {
+      introEl.style.display = 'flex';
+      introEl.style.opacity = '1';
+    }
+  }
+}
+
+// 初始：锁住
+setStarted(false);
+
+// Start 按钮：解锁
+if (startBtn) {
+  startBtn.addEventListener('click', () => {
+    press(startBtn);
+    setStarted(true);
+  });
+}
 
 // --- 动效封装（来自 ui/anim.js） ---
-function press(el)      { window.__press && window.__press(el); }
-function bubble(text)   { window.__bubble && window.__bubble(text); }
-function swapTheme(to)  { window.__swapTheme && window.__swapTheme(to); }
+function press(el)                { window.__press && window.__press(el); }
+// 第二个参数 opts 用来传 isLoading 等配置
+function bubble(text, opts)       { window.__bubble && window.__bubble(text, opts); }
+function swapTheme(to)            { window.__swapTheme && window.__swapTheme(to); }
+function toast(msg, opts) { window.__toast && window.__toast(msg, opts); }
+
 
 // --- 离线兜底回复：按“词的类型”区分语气 ---
 let RESPONSES = {
@@ -76,7 +113,8 @@ function restore() {
   try {
     const s = JSON.parse(localStorage.getItem('persona-state-v1') || 'null');
     if (!s) return;
-    Object.assign(STATE, s);
+    const { started, ...rest } = s; // 忽略 started
+    Object.assign(STATE, rest);
     if (STATE.transformed) {
       swapTheme(STATE.transformed);
     } else {
@@ -86,7 +124,8 @@ function restore() {
   } catch {}
 }
 function persist() {
-  localStorage.setItem('persona-state-v1', JSON.stringify(STATE));
+  const { started, ...save } = STATE; // 不存 started
+  localStorage.setItem('persona-state-v1', JSON.stringify(save));
 }
 
 // --- 模式与 UI（只用于上方 badge 展示） ---
@@ -125,12 +164,22 @@ function updateAwakenStateByRules() {
   }
 
   if (next !== STATE.transformed) {
-    const prev = STATE.transformed;
-    STATE.transformed = next;
-    if (prev == null && next != null) STATE.awakenedOnce = true;
-    // 切换主题（p5 会播放坍塌过场）
-    swapTheme(next || 'neutral');
-  }
+  const prev = STATE.transformed;
+  STATE.transformed = next;
+
+  // ✅ 第一次觉醒提示（只触发一次；Reset 后会重新触发）
+  if (prev == null && next != null && !STATE.awakenedOnce) {
+    STATE.awakenedOnce = true;
+
+      toast({
+        zh: "如果一个小孩长期被这样的话语包围，他会变成什么样？",
+        en: "If a child is surrounded by this kind of language for a long time, what will they become?"
+      }, { duration: 3.8 });
+    }
+
+     swapTheme(next || 'neutral');
+   }
+
 }
 
 // --- Reset：恢复初始状态 ---
@@ -141,6 +190,8 @@ function resetPersona() {
   STATE.mode        = 'neutral';
   STATE.aiReady     = false;
   STATE.aiInitTried = false;
+  STATE.awakenedOnce = false;
+
 
   localStorage.removeItem('persona-state-v1');
 
@@ -157,85 +208,195 @@ function offlineReply(clickedType) {
 }
 
 // --- system prompt：告诉模型现在要用哪种语气 ---
-function systemStylePrompt(clickedType) {
-  if (clickedType === 'abstract') {
-    return `
-You are a Gen Alpha / internet-native persona into memes, rap cadence, and gaming slang.
-Write in a playful, slangy, meme-aware voice (skibidi, sigma, rizz, gyat, Ohio vibes, etc.) but keep it readable.
 
+function systemStylePrompt(clickedType, lang, tier) {
+  const T = Number(tier || 0);
+
+  // ========= 抽象 =========
+  if (clickedType === 'abstract') {
+    if (lang === 'zh') {
+      return `
+你是一个受到网络流行语影响很深的中国青少年，说话里混杂很多网络梗与情绪碎片。
+
+硬规则（必须遵守）：
+- 用中文，只输出【一句话】。
+- 不超过 26 个汉字。
+- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
+
+风格（按强度 TIER 调整，TIER=${T}）：
+- 必须多用这些词中的若干个：包的、那咋了、0人在意、yyds、你个老六、又能怎。
+- 表达偏情绪化、碎片化，可以空洞。
+- TIER 0：较可读但明显网感。
+- TIER 1：更口语、更梗密度。
+- TIER 2：更跳跃、更怪诞、因果更松。
+- TIER 3：接近无厘头，但仍然要像一句完整的话（有主语“我”）。
+
+例子：
+- “包的包的。现在谁不会说这些？”
+- “0个人在意好吗？我只是跟风玩梗而已。”
+- “那咋了？你个老六。”
+`;
+    }
+
+    // lang === 'en'
+    return `
+You are an internet-native teen persona with meme-heavy slang.
 HARD RULES:
 - Output exactly ONE sentence in English.
-- It MUST be a grammatical sentence (not a fragment).
 - NO hashtags, NO emojis, NO lists, NO markdown.
-- 6–22 words max.
+- Keep it readable.
 
+STYLE (TIER=${T}):
+- TIER 0: slangy but coherent.
+- TIER 1: more meme-coded, more jumpy.
+- TIER 2: semi-surreal, logic gets loose.
+- TIER 3: almost nonsense, but still one grammatical sentence.
 EXAMPLES:
 - "Lowkey that move was skibidi-coded, not gonna lie."
 - "Your rizz is on cooldown, but the vibe still goes hard."
-- "Sigma focus locked in, the chaos kinda makes sense."`;
+- "Sigma focus locked in, the chaos kinda makes sense."
+`;
   }
 
-  return `
-You are an elegant and polite literary persona.
-Write with calm flow, clear grammar, and subtle grace—like refined contemporary prose.
+  // ========= 文雅/文学 =========
+  if (lang === 'zh') {
+    // 文学：随着文学值提高更长、更有逻辑（仍然 1 句话 & ≤35字）
+    const lenHint = [
+      "建议 14–30 字，清爽克制。",
+      "建议 40–50 字，句内更连贯。",
+    ][T] || "建议 18–50 字。";
 
+    return `
+你是一个礼貌、流畅、克制的中文叙述者。
+
+硬规则（必须遵守）：
+- 用中文，只输出【一句话】。
+- 这一句话不超过 50 个汉字，必须是完整的话不要把一个词语从中间截断。
+- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
+
+风格与长度（TIER=${T}）：
+- ${lenHint}
+- 必须更有逻辑：尽量包含“因此/所以/然而/不过/于是/同时/即便”等连接词之一。
+- 语气克制但有温度，句法完整。
+
+例子：
+- “我觉得能完整的表达自己很重要。”
+- “很多同学会在上课时也乱说网络用语，我觉得这并不好。”
+`;
+  }
+
+  // lang === 'en' && literary
+  return `
+You are an elegant, polite literary voice in English.
 HARD RULES:
 - Output exactly ONE sentence in English.
-- It MUST be a grammatical sentence (not a fragment).
 - NO hashtags, NO emojis, NO lists, NO markdown.
-- 6–22 words max.
 
+STYLE (TIER=${T}):
+- Higher tier = longer and more logically connected (use therefore/however/while/because).
+- Still keep it as a single, well-formed sentence.
 EXAMPLES:
 - "There is a quiet steadiness here that invites gentler attention."
 - "With measured confidence, the moment arranges itself into clarity."
 - "Polite words can carry warmth without losing their precision."`;
 }
 
+function userPrompt(clickedType, lang, tier, tokenText = '') {
+  const T = Number(tier || 0);
+  const word = String(tokenText || '').trim();
 
-// 可选：给模型的 user 指令，也按 type 区分一下
-function userPrompt(clickedType) {
-  return clickedType === 'abstract'
-    ? "Reply in one slangy, meme-aware sentence that fits the current vibe; obey the hard rules."
-    : "Reply in one polite, elegant sentence with smooth flow; obey the hard rules.";
-}
-function enforceStyle(text, clickedType) {
-  // 显式处理空文本
-  if (!text || !String(text).trim()) {
-    return clickedType === 'abstract'
-      ? "Lowkey loading up, give me a sec."
-      : "Just a moment while I collect a proper sentence.";
+  if (lang === 'zh') {
+    if (clickedType === 'abstract') {
+      return `围绕我刚点击的词“${word}”，用中文写一句话（TIER=${T}），以第一人称视角口语描写，并带上包的/那咋了/0人在意/yyds/你个老六/又能怎里至少两个词。`;
+    }
+    return `围绕我刚点击的词“${word}”，用中文写一句更有逻辑的一句话（TIER=${T}），尽量用因此/所以/然而/不过/于是/同时/即便等连接词。在回复中表现一下对于网络的辩证性思考的深度`;
   }
-  let s = String(text).split('\n')[0].trim();
-  s = s.replace(/#/g, '').replace(/\s{2,}/g, ' ').trim();
 
+  // lang === 'en'
+  if (clickedType === 'abstract') {
+    return `Respond in ONE English sentence about "${word}" (TIER=${T}) with increasing absurdity as tier rises.`;
+  }
+  return `Respond in ONE English sentence about "${word}" (TIER=${T}) that is longer and more logically connected as tier rises. Show your critical thinking about internet.`;
+}
+
+
+function enforceStyle(text, clickedType, lang = 'en', tier = 0) {
+  if (!text || !String(text).trim()) {
+    return (lang === 'zh')
+      ? (clickedType === 'abstract' ? "没找到合适的回复但是那咋了？"
+                                   : "我需要一点时间，因为我想把话说得更清楚。")
+      : (clickedType === 'abstract' ? "Lowkey loading up, give me a sec."
+                                   : "Just a moment while I collect a proper sentence.");
+  }
+
+  let s = String(text).trim();
+
+  // 去掉模型常见的首尾引号
+  s = s.replace(/^[\s"“]+/, '').replace(/[\s"”]+$/, '');
+
+  // 只取第一句（中英文标点都支持）
+  s = s.split('\n')[0].trim();
   const firstSentence = s.split(/(?<=[.!?。！？])\s+/)[0] || s;
   let out = firstSentence.trim();
-  if (!/[.!?]$/.test(out)) out += '.';
 
-  const words = out.split(/\s+/);
-  if (words.length < 3) {
-    out = out.replace(/[.!?]$/, '') + (clickedType === 'abstract' ? ', lowkey.' : ', indeed.');
-  } else if (words.length > 24) {
-    out = words.slice(0, 24).join(' ');
-    if (!/[.!?]$/.test(out)) out += '.';
+  if (lang === 'zh') {
+    // 统一中文句末标点
+    out = out.replace(/[.!?]+$/g, '').trim();
+    if (!/[。！？]$/.test(out)) out += '。';
+
+    // ✅ 中文长度上限：文学更长，且随 tier 增长
+    const t = Math.max(0, Math.min(3, Number(tier || 0)));
+    const maxLen =
+      clickedType === 'literary'
+        ? [30, 40, 50, 60][t]   // 文学：越高越长、最多 50
+        : 26;                   // 抽象：你 system 里写“不超过 26”，这里同步
+
+    // ✅ 超长时：优先在 maxLen 以内找一个合适的停顿符号截断
+    if (out.length > maxLen) {
+      const cutCandidates = ['，', '、', '；', '：', ','];
+      let cutAt = -1;
+      for (const p of cutCandidates) {
+        cutAt = Math.max(cutAt, out.lastIndexOf(p, maxLen - 1));
+      }
+      if (cutAt > 8) {
+        out = out.slice(0, cutAt).trim();
+      } else {
+        out = out.slice(0, maxLen).trim();
+      }
+      out = out.replace(/[，、；：,。！？]+$/g, '');
+      out += '。';
+    }
+    return out;
   }
+
+  // English：保证一句话句末
+  out = out.replace(/#+/g, '').replace(/\s{2,}/g, ' ').trim();
+  if (!/[.!?]$/.test(out)) out += '.';
   return out;
 }
 
 
+
+
 // --- 统一点击入口：按钮/词语云都调用这个 --- 
-export async function personaClick(type) {
+// --- 统一点击入口：按钮/词语云都调用这个 --- 
+export async function personaClick(type, tokenText = '') {
+  if (!STATE.started) return;
+
   if (type === 'abstract') STATE.abstract++;
   if (type === 'literary') STATE.literary++;
 
-  // 先按新规则更新觉醒/中立/切换
   updateAwakenStateByRules();
-
-  // 再更新 UI 徽章并持久化
   updateBadges();
   persist();
 
-  // === 以下保持你的原有 AI 逻辑不变 ===
+  bubble(
+    type === 'abstract'
+      ? 'Loading a glitchy, internet-coded thought…'
+      : 'Composing a calm, careful sentence…',
+    { isLoading: true }
+  );
+
   if (!STATE.aiReady && !STATE.aiInitTried) {
     STATE.aiInitTried = true;
     bubble("Loading the dialogue engine… first time can be slow.");
@@ -250,25 +411,56 @@ export async function personaClick(type) {
   }
 
   try {
+    // ✅ 提前定义：所有分支都能用，catch 也能用
+    const lang = detectLangFromToken(tokenText);
+    const tier = (type === 'abstract')
+      ? tierFromCount(STATE.abstract)
+      : tierFromCount(STATE.literary);
+
     let text;
+
     if (STATE.aiReady) {
       const messages = [
-        { role: "system", content: systemStylePrompt(type) },
-        { role: "user",   content: userPrompt(type) }
+        { role: "system", content: systemStylePrompt(type, lang, tier) },
+        { role: "user",   content: userPrompt(type, lang, tier, tokenText) }
       ];
-      text = await chatOnce(messages, { temperature: 0.95, max_tokens: 60 });
-      text = enforceStyle(text, type);
-      if (!text) text = enforceStyle(offlineReply(type), type);
+
+      const maxTokens =
+        lang === 'zh'
+          ? (type === 'literary' ? 160 : 120)
+          : 90;
+
+      const temperature =
+        type === 'abstract'
+          ? (0.95 + 0.08 * tier)
+          : (0.75 - 0.08 * tier);
+
+      // ✅ raw 变量现在有定义了
+      const raw = await chatOnce(messages, {
+        temperature: Math.max(0.2, Math.min(1.25, temperature)),
+        max_tokens: maxTokens
+      });
+
+      console.log('[AI RAW]', raw);
+
+      text = enforceStyle(raw, type, lang, tier);
+      console.log('[AFTER enforceStyle]', text, 'len=', text.length);
+
+      if (!text) text = enforceStyle(offlineReply(type), type, lang, tier);
     } else {
-      text = enforceStyle(offlineReply(type), type);
+      // ✅ 这里也能用 lang 了
+      text = enforceStyle(offlineReply(type), type, lang, tier);
     }
+
     bubble(text);
   } catch (err) {
     console.warn("AI chat error:", err);
-    bubble(enforceStyle(offlineReply(type), type));
+
+    // ✅ 兜底里别再用未定义变量：重新算一次 lang 最稳
+    const lang = detectLangFromToken(tokenText);
+    bubble(enforceStyle(offlineReply(type), type, lang, tier));
   }
 }
-
 
 window.personaClick = personaClick;
 
@@ -292,6 +484,16 @@ if (resetBtn) {
 let CLOUD_TOKENS = [];
 
 function randomBetween(a,b){ return Math.random()*(b-a)+a; }
+
+function detectLangFromToken(tokenText = '') {
+  // 只要包含中文字符，就判定为中文回复
+  return /[\u4e00-\u9fff]/.test(tokenText) ? 'zh' : 'en';
+}
+
+function tierFromCount(count) {
+  // 0..3 四档：0(轻) 1(中) 2(重) 3(极)
+  return Math.max(0, Math.min(3, Math.floor(count / 5)));
+}
 
 // function renderRing() {
 //   if (!CLOUD_TOKENS.length) return;
@@ -341,12 +543,14 @@ function designToScreenMapper(){
 // —— 按 1920×1080 调你想要的“括号”轨迹 ——
 // 中轴线（人物中心）:
 const CX_DESIGN = 960;
-const CY_DESIGN = 620;  // 稍偏下居中
+// 略微上移一点，让底部空间腾给气泡
+const CY_DESIGN = 540;
+
 // 距离与形状
 let INNER_GAP_DESIGN = 480;  // 离中轴线距离（越大离人物越远）
 let BULGE_DESIGN     = 100;  // 中段鼓出量（越大越像“{}”）
-let TOP_Y_DESIGN     = 300;  // 上边界
-let BOTTOM_Y_DESIGN  = 940;  // 下边界
+let TOP_Y_DESIGN     = 180;  // 上边界（原来是 300）
+let BOTTOM_Y_DESIGN  = 780;  // 下边界（原来是 940）
 
 function renderBrackets(){
   if (!CLOUD_TOKENS.length) return;
@@ -396,7 +600,7 @@ function renderBrackets(){
 
       tag.addEventListener('click', ()=>{
         press(tag);
-        personaClick(tag.dataset.type);
+        personaClick(tag.dataset.type, list[k].text);
         gsap.to(tag,{ y:-6, duration:.12, yoyo:true, repeat:1, ease:"power2.out" });
       });
 
