@@ -173,7 +173,7 @@ function updateAwakenStateByRules() {
 
       toast({
         zh: "如果一个小孩长期被这样的话语包围，他会变成什么样？",
-        en: "If a child is surrounded by this kind of language for a long time, what will they become?"
+        en: "If a child is surrounded by this kind of language for a long time, how will they behave?"
       }, { duration: 3.8 });
     }
 
