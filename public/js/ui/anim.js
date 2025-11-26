@@ -27,7 +27,7 @@ window.__press = function press(el) {
 // 2. AI 回复气泡
 // 2. AI 回复气泡：固定在底部 1/5，支持 loading 状态
 window.__bubble = function bubble(text, opts = {}) {
-  const { isLoading = false } = opts;
+  const { isLoading = false, lang } = opts;
 
   // 如果还没有气泡，就创建一个；如果有，就复用
   if (!bubbleEl) {
@@ -37,6 +37,8 @@ window.__bubble = function bubble(text, opts = {}) {
   }
 
   bubbleEl.textContent = text;
+  const inferred = lang || (/[\u4e00-\u9fff]/.test(text) ? 'zh' : 'en');
+  bubbleEl.setAttribute('lang', inferred === 'zh' ? 'zh-Hans' : 'en');
 
   // 清掉之前的隐藏定时器 & 动画
   if (bubbleHideTimer) {

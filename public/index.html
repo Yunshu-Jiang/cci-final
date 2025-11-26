@@ -1,10 +1,26 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hans">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Persona Demo (Static + WebLLM)</title>
   <style>
+    @font-face {
+      font-family: "Comico";
+      src: url("./fonts/Comico-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+     @font-face {
+      font-family: "MFDianHui";
+      src: url("./fonts/MFDianHui_Noncommercial-Regular.otf") format("opentype");
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
     html,body {
       margin:0;
       height:100%;
@@ -12,6 +28,16 @@
       color:#fff;
       font-family:system-ui,-apple-system,Segoe UI,Roboto;
     }
+    /* 默认：中文字体 */
+    html, body, .wrap {
+      font-family: "MFDianHui", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    /* 任何标记为英文的元素：用 Comico */
+    :lang(en), [lang^="en"] {
+     font-family: "Comico", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+ 
 
     /* 整个场景容器，带背景图；初始为 neutral 主题 */
     .wrap {
@@ -161,10 +187,17 @@
       align-items:center;
       justify-content:center;
       text-align:left;
-      font-size:clamp(14px, 1.2vw, 18px);
+      font-size:clamp(16px, 1.4vw, 20px);
       line-height:1.5;
       overflow:hidden;       /* 超出部分裁掉 */
       white-space:normal;    /* 允许自动换行 */
+    }
+    /* 气泡中文：单独放大 */
+    .bubble:lang(zh),
+    .bubble:lang(zh-Hans),
+    .bubble[lang^="zh"]{
+      font-size: clamp(20px, 1.8vw, 24px);
+      line-height: 1.6;
     }
 
 
@@ -199,6 +232,14 @@
   letter-spacing:0.2px;
   text-shadow:0 1px 2px rgba(0,0,0,.35); /* 可读性 */
 }
+/* 中文词语：比英文大一点点（补偿字体字面偏小） */
+.tag:lang(zh),
+.tag:lang(zh-Hans),
+.tag[lang^="zh"]{
+  font-size: 28px;     /* 你可以试 22~26 */
+  letter-spacing: 0.1px;
+}
+
 
 
 /* 可选：去掉类型边框颜色（之前我们给过） */

@@ -589,6 +589,9 @@ function renderBrackets(){
       tag.dataset.type = list[k].type;
       tag.textContent = list[k].text;
 
+      const l = detectLangFromToken(list[k].text);
+      tag.setAttribute('lang', l === 'zh' ? 'zh-Hans' : 'en');
+
       // const size = Math.round(12 + Math.random()*14);
       // tag.style.fontSize = size+'px';
       // tag.style.fontWeight = size>22?'700':(size>18?'600':'500');
