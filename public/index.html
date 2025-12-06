@@ -28,18 +28,13 @@
       color:#fff;
       font-family:system-ui,-apple-system,Segoe UI,Roboto;
     }
-    /* 默认：中文字体 */
     html, body, .wrap {
       font-family: "MFDianHui", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     }
-
-    /* 任何标记为英文的元素：用 Comico */
     :lang(en), [lang^="en"] {
      font-family: "Comico", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
- 
 
-    /* 整个场景容器，带背景图；初始为 neutral 主题 */
     .wrap {
       position:relative;
       height:100vh;
@@ -58,18 +53,15 @@
       background-image:url("./img/bg-literary.png");
     }
 
-    /* p5 背景画布挂载点 */
     #bg {
   position:absolute;
   inset:0;
   z-index:0;
   pointer-events:none;
-  opacity:1;              /* 让粒子半透明 */
-  mix-blend-mode:normal;    /* 让浅色粒子跟背景叠加 */
+  opacity:1;
+  mix-blend-mode:normal;
 }
 
-
-    /* 人物插画 */
     .persona {
       position:absolute;
       inset:auto 0 0% 0;
@@ -80,7 +72,6 @@
       transform-origin:50% 100%;
     }
 
-    /* 左上角 UI（数值与模式显示 + 手动按钮） */
     .ui {
       position:absolute;
       top:12px;
@@ -91,38 +82,16 @@
       flex-wrap:wrap;
       align-items:center;
     }
-    /* .btn {
-      background:#1f1f24;
-      border:1px solid #2e2e35;
-      padding:8px 12px;
-      border-radius:10px;
-      cursor:pointer;
-      user-select:none;
-    }
-    .badge {
-      padding:4px 10px;
-      background:#202026;
-      border-radius:999px;
-      border:1px solid #2a2a31;
-    } */
-    /* --- Top UI: transparent background + white text with gray outline --- */
 :root { --ui-stroke: rgba(0,0,0,.45); }
 
-/* 覆盖原来的白底样式 */
 .ui .btn,
 .ui .badge{
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-
-  /* 字体样式：白色 + 描边 */
   color: #fff !important;
   font-weight: 700;
-
-  /* Chrome/Safari 等：真正的文字描边 */
   -webkit-text-stroke: 0.8px var(--ui-stroke);
-
-  /* 其它浏览器的降级：用多方向 text-shadow 逼近描边效果 */
   text-shadow:
     1px 0 0 var(--ui-stroke),
    -1px 0 0 var(--ui-stroke),
@@ -133,43 +102,36 @@
     1px -1px 0 var(--ui-stroke),
    -1px -1px 0 var(--ui-stroke);
 }
-
-/* 保持可点区域：透明底时仍有手感 */
 .ui .btn{
   padding: 8px 12px;
   cursor: pointer;
   user-select: none;
-  border-radius: 12px; /* 只影响点击区域，不会看到背景 */
+  border-radius: 12px; 
 }
 .ui .badge{ padding: 4px 10px; border-radius: 12px; }
 
 .ui .btn:hover{ opacity: .9; }
 .ui .btn:active{ transform: translateY(1px); }
-/* 统一顶部 UI 的字号 */
-:root { --ui-font-size: clamp(14px, 1.2vw, 20px); }  /* 你也可以换成固定值，比如 18px */
+:root { --ui-font-size: clamp(14px, 1.2vw, 20px); }
 
 .ui{
-  font-size: var(--ui-font-size);   /* 设定一个统一的父级字号 */
+  font-size: var(--ui-font-size);
 }
 
 .ui .btn,
 .ui .badge{
-  font-size: 1em;                   /* 明确继承父级 */
-  line-height: 1;                   /* 避免行高不同导致看起来大小不一 */
-  font-weight: 700;                 /* 如果需要统一粗细 */
+  font-size: 1em;
+  line-height: 1;
+  font-weight: 700;
   letter-spacing: 0.2px;
 }
 
-    /* AI 回复气泡 */
-        /* AI 回复气泡：固定在底部 1/5，白底黑字 */
     .bubble {
       position:absolute;
       left:50%;
       bottom:20px;
       transform:translateX(-50%);
       box-sizing:border-box;
-
-      /* 尺寸：高度约为视口高度的 1/5，宽度最多容纳 ~30 个字 */
       width: clamp(420px, 50vw, 960px);
       height:15vh;
       max-height:20vh;
@@ -189,10 +151,10 @@
       text-align:left;
       font-size:clamp(16px, 1.4vw, 20px);
       line-height:1.5;
-      overflow:hidden;       /* 超出部分裁掉 */
-      white-space:normal;    /* 允许自动换行 */
+      overflow:hidden;
+      white-space:normal;
     }
-    /* 气泡中文：单独放大 */
+  
     .bubble:lang(zh),
     .bubble:lang(zh-Hans),
     .bubble[lang^="zh"]{
@@ -200,7 +162,6 @@
       line-height: 1.6;
     }
 
-    /* 变身闪光层 */
     .flash {
       position:absolute;
       inset:0;
@@ -209,71 +170,38 @@
       pointer-events:none;
     }
 
-    /* 词语云容器：占满整屏，内部每个 tag 绝对定位在环上 */
     .cloud{
   position:absolute;
-  inset:0;           /* 铺满屏 */
+  inset:0;
   z-index:4;
   pointer-events:none;
 }
-  /* 词语云标签：统一字号、透明底、橘色 */
+
 .tag{
   position:absolute;
   pointer-events:auto;
-  display:inline-block;     /* 让容器刚好包裹文字 */
-  padding:0;                /* 无额外留白 */
+  display:inline-block;
+  padding:0;
   background:transparent;
   border:none;
-  color:#FF8A00;            /* 橘色 */
-  font-size:20px;           /* ← 统一字号（可按需改 18/22） */
-  font-weight:700;          /* 统一粗细 */
-  line-height:1;            /* 减少垂直溢出 */
+  color:#FF8A00;
+  font-size:20px;
+  font-weight:700;
+  line-height:1;
   letter-spacing:0.2px;
-  text-shadow:0 1px 2px rgba(0,0,0,.35); /* 可读性 */
+  text-shadow:0 1px 2px rgba(0,0,0,.35);
 }
-/* 中文词语：比英文大一点点（补偿字体字面偏小） */
 .tag:lang(zh),
 .tag:lang(zh-Hans),
 .tag[lang^="zh"]{
-  font-size: 28px;     /* 你可以试 22~26 */
+  font-size: 28px;
   letter-spacing: 0.1px;
 }
-
-
-
-/* 可选：去掉类型边框颜色（之前我们给过） */
 .tag[data-type="abstract"],
 .tag[data-type="literary"]{
   border: none;
-
 }
 
-    /* .tag {
-      position:absolute;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid #2a2a31;
-      background:#16171c;
-      color:#e9e9ee;
-      opacity:.92;
-      cursor:pointer;
-      line-height:1;
-      transition:filter .2s ease, transform .1s ease;
-      will-change:transform;
-      pointer-events:auto;
-      white-space:nowrap;
-    }
-    .tag[data-type="abstract"] {
-      border-color:#5d2a7f;
-    }
-    .tag[data-type="literary"] {
-      border-color:#6b6b3a;
-    }
-    .tag:hover {
-      filter:brightness(1.15);
-    } */
-  
-  /* --- Intro 开场悬浮窗 --- */
 .intro {
   position:absolute;
   inset:0;
@@ -281,7 +209,7 @@
   display:flex;
   align-items:center;
   justify-content:center;
-  background: rgba(0,0,0,0.12); /* 轻微遮罩，可删 */
+  background: rgba(0,0,0,0.12);
 }
 
 .intro-card{
@@ -290,7 +218,7 @@
   padding: 28px 28px 22px;
   box-sizing: border-box;
 
-  background: rgba(255,255,255,0.82); /* 白底半透明 */
+  background: rgba(255,255,255,0.82);
   color:#111;
   border: 1px solid rgba(0,0,0,0.18);
   border-radius: 22px;
@@ -324,33 +252,25 @@
 
 .intro-start:hover{ filter: brightness(1.02); }
 .intro-start:active{ transform: translateY(1px); }
-
-/* 开始前：锁住交互（安全兜底，JS 也会挡） */
 .wrap.is-locked .tag { pointer-events:none; opacity:.65; }
 .wrap.is-locked #reset-btn { pointer-events:none; opacity:.65; }
-
-/* --- First-awaken toast (top-right) --- */
 .toast {
   position: absolute;
   top: 18px;
   right: 18px;
   z-index: 30;
   pointer-events: none;
-
   width: min(420px, 44vw);
   padding: 14px 16px;
   box-sizing: border-box;
-
   background: rgba(255,255,255,0.82);
   color: #111;
   border: 1px solid rgba(0,0,0,0.18);
   border-radius: 16px;
   box-shadow: 0 14px 40px rgba(0,0,0,0.18);
-
   font-size: 14px;
   line-height: 1.45;
 }
-
 .toast .toast-zh { font-weight: 700; }
 .toast .toast-en { margin-top: 6px; opacity: 0.85; }
 
@@ -358,44 +278,25 @@
   </style>
 </head>
 <body>
-  <!-- 初始使用 neutral 主题 -->
   <div class="wrap theme-neutral" id="wrap">
-    <!-- p5 背景画布 mounting point -->
     <div id="bg"></div>
-
-    <!-- 初始人格插画（neutral 版本） -->
     <img id="persona" class="persona" src="./img/person-neutral.png" alt="persona" />
-
-    <!-- 左上角 UI：当前数值与模式，可选手动按钮 -->
     <div class="ui">
-      <!-- <button class="btn" data-type="abstract">+ Abstract</button>
-      <button class="btn" data-type="literary">+ Literary</button> -->
       <button class="btn" id="reset-btn">Reset</button>
       <span class="badge" id="stats" style="display:none">Abstract 0 · Literary 0</span>
       <span class="badge" id="mode" style="display:none">Neutral</span>
     </div>
-
-    <!-- Intro 开场悬浮窗 -->
     <div id="intro" class="intro" aria-label="intro">
      <div class="intro-card">
       <div class="intro-text">你想让它听到什么？<br/>What do you want it to hear?</div>
       <button id="start-btn" class="intro-start">Start</button>
      </div>
     </div>
-
-
-    <!-- 词语云（环绕在人物附近） -->
     <div id="cloud" class="cloud" aria-label="word-cloud"></div>
-
-    <!-- 变身闪光层 -->
     <div class="flash" id="flash"></div>
   </div>
-
-  <!-- 第三方库：p5 + GSAP（全局变量） -->
   <script src="https://unpkg.com/p5@1.9.3/lib/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-
-  <!-- 主应用脚本（ES Module），内部会 import 其他模块和 WebLLM 封装 -->
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
