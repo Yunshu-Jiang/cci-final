@@ -1,4 +1,3 @@
-// public/js/app.js
 import './ui/anim.js';
 import './bg/p5-scene.js';
 import { ensureAI, chatOnce } from './ai-webllm.js';
@@ -31,12 +30,18 @@ const resultTitle = document.getElementById('result-title');
 const resultSummary = document.getElementById('result-summary');
 const resultWords = document.getElementById('result-words');
 
+// 新增：模型加载提示弹窗相关节点
+const modelHintModal = document.getElementById('model-hint');
+const modelHintBackdrop = document.getElementById('model-hint-backdrop');
+const modelHintOk = document.getElementById('model-hint-ok');
+const modelHintText = document.getElementById('model-hint-text');
+
 // anim helpers
 function press(el){ window.__press && window.__press(el); }
 function bubble(text, opts){ window.__bubble && window.__bubble(text, opts); }
 function swapTheme(theme){ window.__swapTheme && window.__swapTheme(theme); }
 
-// ===== UI helpers：FEEDING 白泡 chips + CHAT 输入框上方回复泡 =====
+// ===== UI helpers：FEEDING 白泡 chips + CHAT 回复泡 =====
 const chatReplyEl = document.getElementById("chat-reply");
 
 function setChatReply(text, { isLoading = false } = {}) {
@@ -56,7 +61,7 @@ function escapeHtml(s = "") {
   }[m]));
 }
 
-// FEEDING：底部白泡里的 chips（可点击移除）
+// FEEDING：底部白泡里的 chips
 function renderFeedChipsHTML(selectedWords) {
   const chosen = (selectedWords || []).map((w) => `
     <span class="feed-chip" data-chip-id="${escapeHtml(w.id)}">
@@ -77,8 +82,8 @@ function updateFeedingBubble(noteText = null) {
   const hint = noteText
     ? noteText
     : (n === 0
-        ? "点击词语开始投喂 / Click words to feed"
-        : `已选 ${n}/5，继续选择 / Selected ${n}/5, keep picking`);
+      ? "点击词语开始投喂 / Click words to feed"
+      : `已选 ${n}/5，继续选择 / Selected ${n}/5, keep picking`);
 
   bubble("", {
     html: `
@@ -89,7 +94,7 @@ function updateFeedingBubble(noteText = null) {
   });
 }
 
-// chips 点击删除（事件代理，作用在 FEEDING 白泡里）
+// FEEDING 白泡里的 chips 点击删除
 document.addEventListener("click", (e) => {
   const chip = e.target.closest("[data-chip-id]");
   if (!chip) return;
@@ -126,7 +131,7 @@ function detectLanguage(text, prev = "zh"){
   return prev || "zh";
 }
 
-// ====== Type normalize (兼容 tokens.json 里的 literary) ======
+// ====== Type normalize ======
 function normType(t){
   if (t === "abstract") return "abstract";
   if (t === "elegant") return "elegant";
@@ -202,7 +207,7 @@ function renderPhaseTitle(){
   }
 }
 
-// ====== Selected words UI (顶部槽保留) ======
+// ====== Selected words UI ======
 function isSelected(id){
   return STATE.selectedWords.some(w => w.id === id);
 }
@@ -306,98 +311,66 @@ function renderHistoryList(){
   historyList.scrollTop = historyList.scrollHeight;
 }
 
-// ====== Prompt templates（更新：更贴近训练 prompt，禁用比喻 & 文雅更辩证） ======
+// ====== Prompt templates ======
 function buildSystemPrompt(persona, lang, selectedWords){
   const memory = selectedWords.map(w=>w.text).join(lang==="zh" ? "、" : ", ");
-
-  if (persona === "abstract") {
-    if (lang === "zh") {
+  if (lang === "zh") {
+    if (persona === "abstract") {
       return `
-你是一个受到网络流行语影响很深的中国青少年，说话里混杂很多网络梗与情绪碎片，对家长和老师有点不耐烦。
+你是一个被中文互联网流行语长期包围的青少年，说话更网感、更碎、更情绪化，但仍可读。
+你被“喂过”的词语记忆是：${memory}
 
-硬规则（必须遵守）：
-- 用中文，只输出【一句话】。
-- 字数控制在 22–34 个汉字。
-- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
-- 句子里最好出现“我”或“他/她/他们”。
+硬规则：
+- 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
+- 句子要围绕互联网、短视频、评论区语言、注意力、表达习惯的影响，不要跑题成泛鸡汤。
+- 控制在 20–35 个汉字，必须可读，结尾用句号/问号。
 
-风格（保持青少年人设）：
-- 语气偏网感、碎片化，可以有点叛逆和无语感，但不能骂人或人身攻击。
-- 可以在恰当处使用这些词：包的、那咋了、0人在意、yyds、你个老六、又能怎。
-- 尽量避免比喻句，尤其不要用“像……一样”“is like ……”这类结构，直接说自己的感觉和态度。
-- 内容必须围绕：互联网、短视频、评论区、家长对上网的态度、注意力和表达方式的变化。
-
-你被“喂过”的词语记忆是：${memory || "（无）"}。
+风格：
+- 更口语、更梗化、更跳跃，但要像一句完整的话。
 `.trim();
     }
-
-    // abstract + English
     return `
-You are an internet-native teen persona soaked in online slang, slightly rebellious toward adults.
+你是一个克制、连贯、温和但清醒的中文叙述者，强调逻辑与连接词。
+你被“喂过”的词语记忆是：${memory}
 
-HARD RULES:
-- Output exactly ONE sentence in English.
-- 14–22 words.
-- NO hashtags, NO emojis, NO lists, NO markdown.
-- Keep the sentence grammatical and readable.
-
-STYLE:
-- You sound casual, meme-coded, a bit jumpy, but still understandable.
-- You stay on topics like memes, short-form video, scrolling, parents' opinions, attention span.
-- You may use light Gen Z slang, but avoid heavy or offensive slurs.
-- Avoid explicit metaphors like "A is like B"; speak directly about how the internet feels to you.
-
-Your "fed words" memory: ${memory || "(none)"}.
+硬规则：
+- 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
+- 句子要围绕互联网、短视频、语言习惯、注意力、表达方式的影响，不要跑题。
+- 尽量包含“因为/所以/然而/不过/因此/即便”之一，让因果或转折更清晰。
+- 控制在 28–45 个汉字，结尾用句号/问号。
 `.trim();
   }
 
-  // elegant persona
-  if (lang === "zh") {
+  if (persona === "abstract") {
     return `
-你是一个礼貌、流畅、克制的中文叙述者，能够冷静、辩证地看待互联网。
+You are an internet-native teen voice: meme-coded, jumpy, a bit fragmented, but still readable.
+Your “fed words” memory: ${memory}
 
-硬规则（必须遵守）：
-- 用中文，只输出【一句话】。
-- 不超过 48 个汉字，句子要完整，不要中途戛然而止。
-- 不要使用表情符号，不要标签/井号，不要列表，不要 markdown。
-
-风格与立场：
-- 使用“因为/所以/然而/不过/因此/即便”等连接词，让因果或转折更清晰。
-- 语气克制但有温度，不居高临下。
-- 态度要【辩证】：承认互联网在学习、信息、社交上的重要性，同时提醒人们警惕注意力被切碎、语言被简化。
-- 尽量避免花哨比喻，直接说清楚观点和感受。
-
-你被“喂过”的词语记忆是：${memory || "（无）"}。
+Hard rules:
+- Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
+- Stay on topic: internet, short-form video, comment-section language, attention, expression habits.
+- 12–22 words, end with one sentence-ending punctuation.
 `.trim();
   }
 
   return `
-You are an elegant, polite literary voice in English who sees the internet in a nuanced way.
+You are a calm, coherent, reflective voice with gentle logic.
+Your “fed words” memory: ${memory}
 
-HARD RULES:
-- Output exactly ONE sentence in English.
-- 16–25 words.
-- NO hashtags, NO emojis, NO lists, NO markdown.
-- The sentence must be grammatically correct, with one clear main clause.
-
-STYLE:
-- Use at most one logical connector such as because/therefore/however/while/so.
-- Maintain a balanced view: the internet is important and useful, but overuse and shallow slang can quietly damage attention and expression.
-- Avoid poetic metaphors; do not say "attention is like X" or similar. Speak plainly and precisely.
-
-Your "fed words" memory: ${memory || "(none)"}.
+Hard rules:
+- Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
+- Stay on topic: internet, short-form video, language habits, attention, expression.
+- Use a connector such as because/therefore/however/while/so.
+- 16–25 words, end with one sentence-ending punctuation.
 `.trim();
 }
 
 function buildUserPrompt(lang, userText){
-  // persona 已经在 system 里约束了，这里只补充「围绕主题、不要比喻」之类的要求
-  if (lang === "zh") {
-    return `用户说：${userText}。请用中文写一句话回应，保持上面的人设和规则，围绕互联网/短视频/网络语言/注意力/家长视角，不要跑题，也尽量不要使用比喻句。`;
-  }
-  return `User says: ${userText}. Reply with exactly ONE English sentence, following the persona and rules above, staying on internet/online language/attention topics and avoiding strange metaphors.`;
+  return lang === "zh"
+    ? `用户说：${userText}\n请用一句话回应，保持人设与规则。`
+    : `User says: ${userText}\nReply with exactly one sentence, following the persona and rules.`;
 }
 
-// ====== 生成回复：不再用 history 当上下文，只看 system + 当前 user ======
 async function generateAssistantReply(userText){
   const persona = STATE.persona || "elegant";
   const lang = STATE.languageMode;
@@ -411,6 +384,7 @@ async function generateAssistantReply(userText){
 
   const messages = [
     { role:"system", content: sys },
+    ...STATE.chatHistory.slice(-6).map(m => ({ role: m.role, content: m.text })),
     { role:"user", content: usr }
   ];
 
@@ -439,10 +413,7 @@ async function onSend(){
   STATE.chatHistory.push({ role:"user", text, ts: Date.now() });
   STATE.chatTurnCount += 1;
 
-  setChatReply(
-    STATE.languageMode === "zh" ? "正在生成…" : "Generating…",
-    { isLoading:true }
-  );
+  setChatReply(STATE.languageMode === "zh" ? "正在生成…" : "Generating…", { isLoading:true });
   if (chatInputEl) chatInputEl.value = "";
 
   const myReq = ++STATE.reqId;
@@ -540,7 +511,6 @@ async function generateResultSummary(){
 长度：不超过 25 个汉字。
 语气：${persona==="abstract" ? "更网感但仍克制" : "更克制、更有边界感"}。
 需隐含主题：互联网语言、短视频、注意力、表达习惯。
-尽量不要使用比喻句，直接说问题或提醒。
 参考记忆词：${memory}
 你可以参考这些示例的方向但不要照抄：
 - ${samples.slice(0,4).join("\n- ")}
@@ -551,7 +521,6 @@ Rules: exactly ONE English sentence, no emojis, no hashtags, no lists, no newlin
 Length: <= 18 words.
 Tone: ${persona==="abstract" ? "slightly meme-coded but restrained" : "calm and coherent"}.
 Topic: internet language, short-form video, attention, expression habits.
-Avoid metaphors; do not compare attention to food or objects.
 Fed-word memory: ${memory}
 Reference vibe (do not copy):
 - ${samples.slice(0,4).join("\n- ")}
@@ -606,7 +575,7 @@ function endChat(reason){
   STATE.isGenerating = false;
   updateChatButtons();
 
-  // 清空 chat 顶部回复泡，避免残留
+  // 清空 chat 顶部回复泡
   setChatReply("");
 
   openResultCard();
@@ -692,7 +661,7 @@ function renderBrackets(){
       tag.dataset.type = type;
       tag.textContent = text;
       tag.style.left = x+'px';
-      tag.style.top  = y+'px';
+      tag.style.top = y+'px';
 
       tag.classList.toggle("selected", isSelected(id));
 
@@ -732,11 +701,61 @@ fetch('./tokens.json')
 
 window.addEventListener('resize', renderBrackets);
 
+// ====== 模型加载提示：只在第一次打开时显示 + 预热模型 ======
+const MODEL_HINT_KEY = "webllm_model_hint_seen_v1";
+
+function openModelHint(){
+  if (!modelHintModal) return;
+  modelHintModal.classList.add("open");
+}
+
+function closeModelHint(){
+  if (!modelHintModal) return;
+  modelHintModal.classList.remove("open");
+}
+
+function initModelHint(){
+  if (!modelHintModal) return;
+
+  const seen = (() => {
+    try { return localStorage.getItem(MODEL_HINT_KEY); }
+    catch { return null; }
+  })();
+
+  if (!seen) {
+    // 第一次访问：弹窗 + 后台预热模型
+    openModelHint();
+
+    ensureAI().then(() => {
+      if (modelHintText && modelHintModal.classList.contains("open")) {
+        modelHintText.textContent =
+          "模型已加载完成，你可以开始和它对话了；下次打开会快很多。";
+      }
+    }).catch(err => {
+      console.warn("warmup ensureAI error:", err);
+    });
+  }
+
+  if (modelHintOk) {
+    modelHintOk.addEventListener("click", () => {
+      try { localStorage.setItem(MODEL_HINT_KEY, "1"); } catch {}
+      closeModelHint();
+    });
+  }
+  if (modelHintBackdrop) {
+    modelHintBackdrop.addEventListener("click", () => {
+      try { localStorage.setItem(MODEL_HINT_KEY, "1"); } catch {}
+      closeModelHint();
+    });
+  }
+}
+
 // ====== Bindings ======
 renderPhaseTitle();
 renderSelectedBar();
 updateChatButtons();
 updateFeedingBubble();
+initModelHint();
 
 if (resetBtn) {
   resetBtn.addEventListener("click", () => {
