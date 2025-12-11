@@ -277,7 +277,7 @@ function enterChat(){
   setPhase("CHAT");
   setChatReply(
     STATE.languageMode === "zh"
-      ? "你想说什么都可以，但试着把话说成一句。"
+      ? "Tell me anything, but try to keep it to one sentence."
       : "Tell me anything, but try to keep it to one sentence."
   );
 
