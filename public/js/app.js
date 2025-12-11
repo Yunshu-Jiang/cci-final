@@ -1,423 +1,680 @@
+// public/js/app.js
 import './ui/anim.js';
 import './bg/p5-scene.js';
 import { ensureAI, chatOnce } from './ai-webllm.js';
-const STATE = {
-  abstract:   0,
-  literary:   0,
-  transformed:null,
-  mode:       'neutral',
-  aiReady:    false,
-  aiInitTried:false,
-  started:    false,
-  awakenedOnce:false
-};
-const INIT_AWAKEN_DIFF = 5;
-const STABLE_DIFF = 3;
-const statsEl  = document.getElementById('stats');
-const modeEl   = document.getElementById('mode');
-const cloudEl  = document.getElementById('cloud');
+
+const wrapEl = document.getElementById('wrap');
+const cloudEl = document.getElementById('cloud');
 const resetBtn = document.getElementById('reset-btn');
-const wrapEl   = document.getElementById('wrap');
-const introEl  = document.getElementById('intro');
-const startBtn = document.getElementById('start-btn');
 
-function setStarted(v){
-  STATE.started = v;
-  if (wrapEl) wrapEl.classList.toggle('is-locked', !v);
+const phaseTitleEl = document.getElementById('phase-title');
 
-  if (introEl) {
-    if (v) {
-      if (window.gsap) {
-        gsap.to(introEl, { opacity: 0, duration: 0.25, ease: "power2.out", onComplete: () => introEl.style.display = 'none' });
-      } else {
-        introEl.style.display = 'none';
-      }
-    } else {
-      introEl.style.display = 'flex';
-      introEl.style.opacity = '1';
-    }
-  }
+const selectedCounterEl = document.getElementById('selected-counter');
+const selectedListEl = document.getElementById('selected-list');
+
+const chatBarEl = document.getElementById('chat-bar');
+const chatInputEl = document.getElementById('chat-input');
+const sendBtn = document.getElementById('send-btn');
+const endBtn = document.getElementById('end-btn');
+const historyBtn = document.getElementById('history-btn');
+
+const historyDrawer = document.getElementById('history-drawer');
+const historyBackdrop = document.getElementById('history-backdrop');
+const historyClose = document.getElementById('history-close');
+const historyList = document.getElementById('history-list');
+
+const resultModal = document.getElementById('result-modal');
+const resultBackdrop = document.getElementById('result-backdrop');
+const resultClose = document.getElementById('result-close');
+const restartBtn = document.getElementById('restart-btn');
+const resultTitle = document.getElementById('result-title');
+const resultSummary = document.getElementById('result-summary');
+const resultWords = document.getElementById('result-words');
+
+// anim helpers
+function press(el){ window.__press && window.__press(el); }
+function bubble(text, opts){ window.__bubble && window.__bubble(text, opts); }
+function swapTheme(theme){ window.__swapTheme && window.__swapTheme(theme); }
+
+// ===== UI helpers：FEEDING 白泡 chips + CHAT 输入框上方回复泡 =====
+const chatReplyEl = document.getElementById("chat-reply");
+
+function setChatReply(text, { isLoading = false } = {}) {
+  if (!chatReplyEl) return;
+  chatReplyEl.textContent = text || "";
+  chatReplyEl.style.opacity = isLoading ? "0.75" : "1";
 }
-setStarted(false);
-if (startBtn) {
-  startBtn.addEventListener('click', () => {
-    press(startBtn);
-    setStarted(true);
+
+// 安全转义
+function escapeHtml(s = "") {
+  return String(s).replace(/[&<>"']/g, (m) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[m]));
+}
+
+// FEEDING：底部白泡里的 chips（可点击移除）
+function renderFeedChipsHTML(selectedWords) {
+  const chosen = (selectedWords || []).map((w) => `
+    <span class="feed-chip" data-chip-id="${escapeHtml(w.id)}">
+      ${escapeHtml(w.text)} <span class="x">×</span>
+    </span>
+  `).join("");
+
+  const empties = Array.from({ length: Math.max(0, 5 - (selectedWords?.length || 0)) })
+    .map(() => `<span class="feed-chip feed-chip--empty">＋</span>`)
+    .join("");
+
+  return chosen + empties;
+}
+
+function updateFeedingBubble(noteText = null) {
+  const n = STATE.selectedWords.length;
+  const chipsHTML = renderFeedChipsHTML(STATE.selectedWords || []);
+  const hint = noteText
+    ? noteText
+    : (n === 0
+        ? "点击词语开始投喂 / Click words to feed"
+        : `已选 ${n}/5，继续选择 / Selected ${n}/5, keep picking`);
+
+  bubble("", {
+    html: `
+      <div class="bubble-chips">${chipsHTML}</div>
+      <div class="bubble-hint">${escapeHtml(hint)}</div>
+    `,
+    isLoading: false,
   });
 }
-function press(el)                { window.__press && window.__press(el); }
-function bubble(text, opts)       { window.__bubble && window.__bubble(text, opts); }
-function swapTheme(to)            { window.__swapTheme && window.__swapTheme(to); }
-function toast(msg, opts) { window.__toast && window.__toast(msg, opts); }
-let RESPONSES = {
-  abstract: [
-    "bro that hit different fr.",
-    "ngl this vibe is kinda cracked.",
-    "lowkey fire, highkey unexplainable.",
-    "this goes hard, might screenshot.",
-    "brain lagging but the drip is real."
-  ],
-  literary: [
-    "Thank you, that image lingers softly.",
-    "There is a quiet grace in what you just evoked.",
-    "I’ll tuck this thought between the pages for later.",
-    "Gentle, precise—like a well-placed comma.",
-    "It feels like a line from a book I almost remember."
-  ]
+
+// chips 点击删除（事件代理，作用在 FEEDING 白泡里）
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-chip-id]");
+  if (!chip) return;
+  if (STATE.phase !== "FEEDING") return;
+
+  const id = chip.dataset.chipId;
+  STATE.selectedWords = (STATE.selectedWords || []).filter((w) => w.id !== id);
+  renderSelectedBar();
+  updateFeedingBubble();
+});
+
+// ====== Global State ======
+const MAX_FEED = 5;
+const MAX_TURNS = 5;
+
+const STATE = {
+  phase: "FEEDING",
+  selectedWords: [],
+  persona: null,
+  chatHistory: [],
+  chatTurnCount: 0,
+  maxTurns: MAX_TURNS,
+  languageMode: "zh",
+  isGenerating: false,
+  endReason: null,
+  reqId: 0
 };
-fetch('./responses.json')
-  .then(r => r.ok ? r.json() : null)
-  .then(d => { if (d) RESPONSES = d; })
-  .catch(()=>{});
-function restore() {
-  try {
-    const s = JSON.parse(localStorage.getItem('persona-state-v1') || 'null');
-    if (!s) return;
-    const { started, ...rest } = s;
-    Object.assign(STATE, rest);
-    if (STATE.transformed) {
-      swapTheme(STATE.transformed);
-    } else {
-      swapTheme('neutral');
-    }
-    updateBadges();
-  } catch {}
-}
-function persist() {
-  const { started, ...save } = STATE;
-  localStorage.setItem('persona-state-v1', JSON.stringify(save));
-}
-// ui
-function computeModeLabel() {
-  if (STATE.transformed === 'abstract') return 'Awakened: Abstract';
-  if (STATE.transformed === 'literary') return 'Awakened: Literary';
-  return 'Neutral';
+
+// ====== Language detect ======
+function detectLanguage(text, prev = "zh"){
+  const s = String(text || "");
+  if (/[\u4e00-\u9fff]/.test(s)) return "zh";
+  if (/[A-Za-z]/.test(s)) return "en";
+  return prev || "zh";
 }
 
-function updateBadges() {
-  statsEl.textContent = `Abstract ${STATE.abstract} · Literary ${STATE.literary}`;
-  modeEl.textContent  = computeModeLabel();
-  STATE.mode = (STATE.transformed === 'abstract')
-    ? 'trans_abstract'
-    : (STATE.transformed === 'literary')
-      ? 'trans_literary'
-      : 'neutral';
-}
-function updateAwakenStateByRules() {
-  const diff = STATE.abstract - STATE.literary;
-  let next = STATE.transformed;
-
-  if (!STATE.awakenedOnce && STATE.transformed == null) {
-    if (Math.abs(diff) >= INIT_AWAKEN_DIFF) {
-      next = (diff > 0) ? 'abstract' : 'literary';
-    } else {
-      next = null;
-    }
-  } else {
-    if (diff > STABLE_DIFF)       next = 'abstract';
-    else if (-diff > STABLE_DIFF) next = 'literary';
-    else                          next = null;
-  }
-
-  if (next !== STATE.transformed) {
-  const prev = STATE.transformed;
-  STATE.transformed = next;
-  if (prev == null && next != null && !STATE.awakenedOnce) {
-    STATE.awakenedOnce = true;
-      toast({
-        zh: "如果一个小孩长期被这样的话语包围，他会变成什么样？",
-        en: "If a child is surrounded by this kind of language for a long time, how will they behave?"
-      }, { duration: 3.8 });
-    }
-     swapTheme(next || 'neutral');
-   }
-}
-// reset
-function resetPersona() {
-  STATE.abstract    = 0;
-  STATE.literary    = 0;
-  STATE.transformed = null;
-  STATE.mode        = 'neutral';
-  STATE.aiReady     = false;
-  STATE.aiInitTried = false;
-  STATE.awakenedOnce = false;
-  localStorage.removeItem('persona-state-v1');
-  updateBadges();
-  swapTheme('neutral');
+// ====== Type normalize (兼容 tokens.json 里的 literary) ======
+function normType(t){
+  if (t === "abstract") return "abstract";
+  if (t === "elegant") return "elegant";
+  if (t === "literary") return "elegant";
+  return "elegant";
 }
 
-function offlineReply(clickedType) {
-  const key = clickedType === 'abstract' ? 'abstract' : 'literary';
-  const pool = RESPONSES[key] || [];
-  if (!pool.length) return '…';
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-// ai prompt (These prompt words are the descriptions I wrote and have been refined and summarized by chatgpt. After I provided my description to chatgpt, I asked chatgpt to "summarize and distill these descriptive languages into a format suitable for use as prompt words in ai dialogue models.")
-function systemStylePrompt(clickedType, lang, tier) {
-  const T = Number(tier || 0);
-  if (clickedType === 'abstract') {
-    if (lang === 'zh') {
-      return `
-你是一个受到网络流行语影响很深的中国青少年，说话里混杂很多网络梗与情绪碎片。
-硬规则（必须遵守）：
-- 用中文，只输出一句话。
-- 不超过 26 个汉字。
-- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
-风格（按强度 TIER 调整，TIER=${T}）：
-- 必须多用这些词中的若干个：包的、那咋了、0人在意、yyds、你个老六、又能怎。
-- 表达偏情绪化、碎片化，可以空洞。
-- TIER 0：较可读但明显网感。
-- TIER 1：更口语、更梗密度。
-- TIER 2：更跳跃、更怪诞、因果更松。
-- TIER 3：接近无厘头，但仍然要像一句完整的话（有主语“我”）。
-例子：
-- “包的包的。现在谁不会说这些？”
-- “0个人在意好吗？我只是跟风玩梗而已。”
-- “那咋了？你个老六。”
-`;
-    }
-    return `
-You are an internet-native teen persona with meme-heavy slang.
-HARD RULES:
-- Output exactly ONE sentence in English.
-- NO hashtags, NO emojis, NO lists, NO markdown.
-- Keep it readable.
-STYLE (TIER=${T}):
-- TIER 0: slangy but coherent.
-- TIER 1: more meme-coded, more jumpy.
-- TIER 2: semi-surreal, logic gets loose.
-- TIER 3: almost nonsense, but still one grammatical sentence.
-EXAMPLES:
-- "Lowkey that move was skibidi-coded, not gonna lie."
-- "Your rizz is on cooldown, but the vibe still goes hard."
-- "Sigma focus locked in, the chaos kinda makes sense."
-`;
-  }
-  if (lang === 'zh') {
-    const lenHint = [
-      "建议 14–30 字，清爽克制。",
-      "建议 40–50 字，句内更连贯。",
-    ][T] || "建议 18–50 字。";
-    return `
-你是一个礼貌、流畅、克制的中文叙述者。
-硬规则（必须遵守）：
-- 用中文，只输出一句话。
-- 这一句话不超过 50 个汉字，必须是完整的话不要把一个词语从中间截断。
-- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
-风格与长度（TIER=${T}）：
-- ${lenHint}
-- 必须更有逻辑：尽量包含“因此/所以/然而/不过/于是/同时/即便”等连接词之一。
-- 语气克制但有温度，句法完整。
-例子：
-- “我觉得能完整的表达自己很重要。”
-- “很多同学会在上课时也乱说网络用语，我觉得这并不好。”
-`;
-  }
-  return `
-You are an elegant, polite literary voice in English.
-HARD RULES:
-- Output exactly ONE sentence in English.
-- NO hashtags, NO emojis, NO lists, NO markdown.
-
-STYLE (TIER=${T}):
-- Higher tier = longer and more logically connected (use therefore/however/while/because).
-- Still keep it as a single, well-formed sentence.
-EXAMPLES:
-- "There is a quiet steadiness here that invites gentler attention."
-- "With measured confidence, the moment arranges itself into clarity."
-- "Polite words can carry warmth without losing their precision."`;
+function personaToTheme(persona){
+  if (persona === "abstract") return "abstract";
+  if (persona === "elegant") return "literary";
+  return "neutral";
 }
 
-function userPrompt(clickedType, lang, tier, tokenText = '') {
-  const T = Number(tier || 0);
-  const word = String(tokenText || '').trim();
-  if (lang === 'zh') {
-    if (clickedType === 'abstract') {
-      return `围绕我刚点击的词“${word}”，用中文写一句话（TIER=${T}），以第一人称视角口语描写，并带上包的/那咋了/0人在意/yyds/你个老六/又能怎里至少两个词。`;
-    }
-    return `围绕我刚点击的词“${word}”，用中文写一句更有逻辑的一句话（TIER=${T}），尽量用因此/所以/然而/不过/于是/同时/即便等连接词。在回复中表现一下对于网络的辩证性思考的深度`;
-  }
-  if (clickedType === 'abstract') {
-    return `Respond in ONE English sentence about "${word}" (TIER=${T}) with increasing absurdity as tier rises.`;
-  }
-  return `Respond in ONE English sentence about "${word}" (TIER=${T}) that is longer and more logically connected as tier rises. Show your critical thinking about internet.`;
-}
+// ====== One-sentence enforcement ======
+function enforceOneSentence(raw, lang, persona){
+  let s = String(raw || "").replace(/\r/g,"").trim();
+  if (!s) return lang === "zh" ? "我需要一点时间整理一下。"
+                               : "Give me a moment to put it into one sentence.";
 
-function enforceStyle(text, clickedType, lang = 'en', tier = 0) {
-  if (!text || !String(text).trim()) {
-    return (lang === 'zh')
-      ? (clickedType === 'abstract' ? "没找到合适的回复但是那咋了？"
-                                   : "我需要一点时间，因为我想把话说得更清楚。")
-      : (clickedType === 'abstract' ? "Lowkey loading up, give me a sec."
-                                   : "Just a moment while I collect a proper sentence.");
-  }
+  s = s.split("\n").map(x=>x.trim()).filter(Boolean).join(" ");
+  s = s.replace(/#/g,"").replace(/\s{2,}/g," ").trim();
 
-  let s = String(text).trim();
-  s = s.replace(/^[\s"“]+/, '').replace(/[\s"”]+$/, '');
-  s = s.split('\n')[0].trim();
-  const firstSentence = s.split(/(?<=[.!?。！？])\s+/)[0] || s;
-  let out = firstSentence.trim();
+  if (lang === "zh") {
+    const m = s.match(/^(.+?[。！？])/);
+    let out = (m ? m[1] : s);
+    out = out.replace(/[.!?]+$/g, "").trim();
+    if (!/[。！？]$/.test(out)) out += "。";
 
-  if (lang === 'zh') {
-    out = out.replace(/[.!?]+$/g, '').trim();
-    if (!/[。！？]$/.test(out)) out += '。';
-    const t = Math.max(0, Math.min(3, Number(tier || 0)));
-    const maxLen =
-      clickedType === 'literary'
-        ? [30, 40, 50, 60][t]
-        : 26;
-
-    // Here, I found that sometimes sentences are always truncated at unreasonable points. Therefore, I asked chatgpt, "In this situation, how can we optimize to obtain a sentence that is as logically clear and relatively complete as possible?"
-    if (out.length > maxLen) {
-      const cutCandidates = ['，', '、', '；', '：', ','];
-      let cutAt = -1;
-      for (const p of cutCandidates) {
-        cutAt = Math.max(cutAt, out.lastIndexOf(p, maxLen - 1));
-      }
-      if (cutAt > 8) {
-        out = out.slice(0, cutAt).trim();
-      } else {
-        out = out.slice(0, maxLen).trim();
-      }
-      out = out.replace(/[，、；：,。！？]+$/g, '');
-      out += '。';
+    const max = persona === "abstract" ? 35 : 45;
+    if (out.length > max) {
+      const cut = out.slice(0, max);
+      const idx = Math.max(
+        cut.lastIndexOf("。"),
+        cut.lastIndexOf("，"),
+        cut.lastIndexOf("、"),
+        cut.lastIndexOf("；")
+      );
+      const use = idx >= 10 ? cut.slice(0, idx) : cut;
+      out = use.replace(/[，、；。]+$/,"").trim() + "。";
     }
     return out;
   }
 
-  out = out.replace(/#+/g, '').replace(/\s{2,}/g, ' ').trim();
-  if (!/[.!?]$/.test(out)) out += '.';
+  const m = s.match(/^(.+?[.!?])/);
+  let out = (m ? m[1] : s);
+  out = out.trim();
+  if (!/[.!?]$/.test(out)) out += ".";
+
+  const maxWords = persona === "abstract" ? 22 : 25;
+  const words = out.split(/\s+/);
+  if (words.length > maxWords) {
+    out = words.slice(0, maxWords).join(" ");
+    out = out.replace(/[.!?]*$/,"").trim() + ".";
+  }
   return out;
 }
 
- 
-export async function personaClick(type, tokenText = '') {
-  if (!STATE.started) return;
+// ====== Phase title ======
+function renderPhaseTitle(){
+  if (!phaseTitleEl) return;
+  if (STATE.phase === "FEEDING") {
+    phaseTitleEl.innerHTML =
+      `你想让它听到什么 <span class="sub">What do you want it to hear?</span>` +
+      `<span class="hint">选择 5 个词 / Pick exactly 5 words</span>`;
+  } else if (STATE.phase === "CHAT") {
+    phaseTitleEl.innerHTML =
+      `关于互联网，你有什么想和他说 <span class="sub">What do you want to tell it about the internet?</span>` +
+      `<span class="hint">最多 5 轮 / Up to 5 turns</span>`;
+  } else {
+    phaseTitleEl.innerHTML =
+      `人格档案 <span class="sub">Persona Record</span>` +
+      `<span class="hint">查看总结 / Review</span>`;
+  }
+}
 
-  if (type === 'abstract') STATE.abstract++;
-  if (type === 'literary') STATE.literary++;
+// ====== Selected words UI (顶部槽保留) ======
+function isSelected(id){
+  return STATE.selectedWords.some(w => w.id === id);
+}
 
-  updateAwakenStateByRules();
-  updateBadges();
-  persist();
+function renderSelectedBar(){
+  if (!selectedCounterEl || !selectedListEl) return;
+  selectedCounterEl.textContent = `${STATE.selectedWords.length}/${MAX_FEED}`;
+  selectedListEl.innerHTML = "";
 
-  bubble(
-    type === 'abstract'
-      ? 'Loading a glitchy, internet-coded thought…'
-      : 'Composing a calm, careful sentence…',
-    { isLoading: true }
+  STATE.selectedWords.forEach(w => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.title = "点击移除 / click to remove";
+    chip.innerHTML = `<span>${w.text}</span><span class="x">×</span>`;
+    chip.addEventListener("click", () => {
+      press(chip);
+      removeSelected(w.id);
+    });
+    selectedListEl.appendChild(chip);
+  });
+
+  document.querySelectorAll(".tag").forEach(el => {
+    el.classList.toggle("selected", isSelected(el.dataset.id));
+  });
+}
+
+function addSelected(word){
+  if (STATE.selectedWords.length >= MAX_FEED) {
+    updateFeedingBubble("已选满 5 个词 / 5 words selected");
+    return;
+  }
+  STATE.selectedWords.push(word);
+  renderSelectedBar();
+  updateFeedingBubble();
+
+  if (STATE.selectedWords.length === MAX_FEED) {
+    submitFeeding();
+  }
+}
+
+function removeSelected(id){
+  STATE.selectedWords = STATE.selectedWords.filter(w => w.id !== id);
+  renderSelectedBar();
+  updateFeedingBubble();
+}
+
+// ====== Phase switch ======
+function setPhase(phase){
+  STATE.phase = phase;
+  if (wrapEl) wrapEl.dataset.phase = phase;
+  renderPhaseTitle();
+}
+
+// ====== FEEDING submit -> decide persona -> theme switch -> enter CHAT ======
+function decidePersonaFrom5(){
+  const a = STATE.selectedWords.filter(w => w.type === "abstract").length;
+  const e = MAX_FEED - a;
+  return (a > e) ? "abstract" : "elegant";
+}
+
+function enterChat(){
+  STATE.chatHistory = [];
+  STATE.chatTurnCount = 0;
+  STATE.isGenerating = false;
+  STATE.endReason = null;
+
+  setPhase("CHAT");
+  setChatReply(
+    STATE.languageMode === "zh"
+      ? "你想说什么都可以，但试着把话说成一句。"
+      : "Tell me anything, but try to keep it to one sentence."
   );
 
-  if (!STATE.aiReady && !STATE.aiInitTried) {
-    STATE.aiInitTried = true;
-    bubble("Loading the dialogue engine… first time can be slow.");
-    try {
-      await ensureAI();
-      STATE.aiReady = true;
-      bubble("Ready. Talk to me.");
-    } catch (e) {
-      console.warn("AI init failed, fallback to offline:", e);
-      bubble("Engine failed to load. Using offline persona for now.");
+  if (chatInputEl) chatInputEl.focus();
+  updateChatButtons();
+}
+
+function submitFeeding(){
+  STATE.persona = decidePersonaFrom5();
+  swapTheme(personaToTheme(STATE.persona));
+  enterChat();
+}
+
+// ====== CHAT: history drawer ======
+function openHistory(){
+  if (STATE.phase !== "CHAT") return;
+  renderHistoryList();
+  historyDrawer.classList.add("open");
+}
+function closeHistory(){
+  historyDrawer.classList.remove("open");
+}
+function renderHistoryList(){
+  historyList.innerHTML = "";
+  STATE.chatHistory.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "msg " + (m.role === "user" ? "user" : "assistant");
+    div.textContent = (m.role === "user" ? "You: " : "AI: ") + m.text;
+    historyList.appendChild(div);
+  });
+  historyList.scrollTop = historyList.scrollHeight;
+}
+
+// ====== Prompt templates（更新：更贴近训练 prompt，禁用比喻 & 文雅更辩证） ======
+function buildSystemPrompt(persona, lang, selectedWords){
+  const memory = selectedWords.map(w=>w.text).join(lang==="zh" ? "、" : ", ");
+
+  if (persona === "abstract") {
+    if (lang === "zh") {
+      return `
+你是一个受到网络流行语影响很深的中国青少年，说话里混杂很多网络梗与情绪碎片，对家长和老师有点不耐烦。
+
+硬规则（必须遵守）：
+- 用中文，只输出【一句话】。
+- 字数控制在 22–34 个汉字。
+- 不要使用表情符号，不要使用标签/井号，不要列表，不要 markdown。
+- 句子里最好出现“我”或“他/她/他们”。
+
+风格（保持青少年人设）：
+- 语气偏网感、碎片化，可以有点叛逆和无语感，但不能骂人或人身攻击。
+- 可以在恰当处使用这些词：包的、那咋了、0人在意、yyds、你个老六、又能怎。
+- 尽量避免比喻句，尤其不要用“像……一样”“is like ……”这类结构，直接说自己的感觉和态度。
+- 内容必须围绕：互联网、短视频、评论区、家长对上网的态度、注意力和表达方式的变化。
+
+你被“喂过”的词语记忆是：${memory || "（无）"}。
+`.trim();
     }
+
+    // abstract + English
+    return `
+You are an internet-native teen persona soaked in online slang, slightly rebellious toward adults.
+
+HARD RULES:
+- Output exactly ONE sentence in English.
+- 14–22 words.
+- NO hashtags, NO emojis, NO lists, NO markdown.
+- Keep the sentence grammatical and readable.
+
+STYLE:
+- You sound casual, meme-coded, a bit jumpy, but still understandable.
+- You stay on topics like memes, short-form video, scrolling, parents' opinions, attention span.
+- You may use light Gen Z slang, but avoid heavy or offensive slurs.
+- Avoid explicit metaphors like "A is like B"; speak directly about how the internet feels to you.
+
+Your "fed words" memory: ${memory || "(none)"}.
+`.trim();
   }
+
+  // elegant persona
+  if (lang === "zh") {
+    return `
+你是一个礼貌、流畅、克制的中文叙述者，能够冷静、辩证地看待互联网。
+
+硬规则（必须遵守）：
+- 用中文，只输出【一句话】。
+- 不超过 48 个汉字，句子要完整，不要中途戛然而止。
+- 不要使用表情符号，不要标签/井号，不要列表，不要 markdown。
+
+风格与立场：
+- 使用“因为/所以/然而/不过/因此/即便”等连接词，让因果或转折更清晰。
+- 语气克制但有温度，不居高临下。
+- 态度要【辩证】：承认互联网在学习、信息、社交上的重要性，同时提醒人们警惕注意力被切碎、语言被简化。
+- 尽量避免花哨比喻，直接说清楚观点和感受。
+
+你被“喂过”的词语记忆是：${memory || "（无）"}。
+`.trim();
+  }
+
+  return `
+You are an elegant, polite literary voice in English who sees the internet in a nuanced way.
+
+HARD RULES:
+- Output exactly ONE sentence in English.
+- 16–25 words.
+- NO hashtags, NO emojis, NO lists, NO markdown.
+- The sentence must be grammatically correct, with one clear main clause.
+
+STYLE:
+- Use at most one logical connector such as because/therefore/however/while/so.
+- Maintain a balanced view: the internet is important and useful, but overuse and shallow slang can quietly damage attention and expression.
+- Avoid poetic metaphors; do not say "attention is like X" or similar. Speak plainly and precisely.
+
+Your "fed words" memory: ${memory || "(none)"}.
+`.trim();
+}
+
+function buildUserPrompt(lang, userText){
+  // persona 已经在 system 里约束了，这里只补充「围绕主题、不要比喻」之类的要求
+  if (lang === "zh") {
+    return `用户说：${userText}。请用中文写一句话回应，保持上面的人设和规则，围绕互联网/短视频/网络语言/注意力/家长视角，不要跑题，也尽量不要使用比喻句。`;
+  }
+  return `User says: ${userText}. Reply with exactly ONE English sentence, following the persona and rules above, staying on internet/online language/attention topics and avoiding strange metaphors.`;
+}
+
+// ====== 生成回复：不再用 history 当上下文，只看 system + 当前 user ======
+async function generateAssistantReply(userText){
+  const persona = STATE.persona || "elegant";
+  const lang = STATE.languageMode;
+  const sys = buildSystemPrompt(persona, lang, STATE.selectedWords);
+  const usr = buildUserPrompt(lang, userText);
+
+  const temperature = persona === "abstract" ? 0.95 : 0.65;
+  const max_tokens = (lang === "zh")
+    ? (persona === "abstract" ? 120 : 160)
+    : 110;
+
+  const messages = [
+    { role:"system", content: sys },
+    { role:"user", content: usr }
+  ];
+
+  const raw = await chatOnce(messages, { temperature, max_tokens });
+  return enforceOneSentence(raw, lang, persona);
+}
+
+// ====== CHAT send ======
+function updateChatButtons(){
+  const inChat = STATE.phase === "CHAT";
+  if (sendBtn) sendBtn.disabled = !inChat || STATE.isGenerating;
+  if (endBtn) endBtn.disabled = !inChat;
+  if (historyBtn) historyBtn.disabled = !inChat;
+}
+
+async function onSend(){
+  if (STATE.phase !== "CHAT") return;
+  const text = String(chatInputEl?.value || "").trim();
+  if (!text) return;
+
+  STATE.isGenerating = true;
+  updateChatButtons();
+
+  STATE.languageMode = detectLanguage(text, STATE.languageMode);
+
+  STATE.chatHistory.push({ role:"user", text, ts: Date.now() });
+  STATE.chatTurnCount += 1;
+
+  setChatReply(
+    STATE.languageMode === "zh" ? "正在生成…" : "Generating…",
+    { isLoading:true }
+  );
+  if (chatInputEl) chatInputEl.value = "";
+
+  const myReq = ++STATE.reqId;
 
   try {
-    const lang = detectLangFromToken(tokenText);
-    const tier = (type === 'abstract')
-      ? tierFromCount(STATE.abstract)
-      : tierFromCount(STATE.literary);
+    await ensureAI();
+    const reply = await generateAssistantReply(text);
 
-    let text;
-    if (STATE.aiReady) {
-      const messages = [
-        { role: "system", content: systemStylePrompt(type, lang, tier) },
-        { role: "user",   content: userPrompt(type, lang, tier, tokenText) }
-      ];
-      const maxTokens =
-        lang === 'zh'
-          ? (type === 'literary' ? 160 : 120)
-          : 90;
-      const temperature =
-        type === 'abstract'
-          ? (0.95 + 0.08 * tier)
-          : (0.75 - 0.08 * tier);
-      const raw = await chatOnce(messages, {
-        temperature: Math.max(0.2, Math.min(1.25, temperature)),
-        max_tokens: maxTokens
-      });
+    if (myReq !== STATE.reqId) return;
+    if (STATE.phase !== "CHAT") return;
 
-      console.log('[AI RAW]', raw);
-      text = enforceStyle(raw, type, lang, tier);
-      console.log('[AFTER enforceStyle]', text, 'len=', text.length);
+    STATE.chatHistory.push({ role:"assistant", text: reply, ts: Date.now() });
+    setChatReply(reply, { isLoading:false });
 
-      if (!text) text = enforceStyle(offlineReply(type), type, lang, tier);
-    } else {
-      text = enforceStyle(offlineReply(type), type, lang, tier);
+    if (STATE.chatTurnCount >= STATE.maxTurns) {
+      endChat("maxTurns");
+      return;
     }
-    bubble(text);
-  } catch (err) {
-    console.warn("AI chat error:", err);
-    const lang = detectLangFromToken(tokenText);
-    bubble(enforceStyle(offlineReply(type), type, lang, tier));
+  } catch (e) {
+    console.warn("AI chat error:", e);
+    if (myReq !== STATE.reqId) return;
+
+    const fallback = STATE.languageMode === "zh"
+      ? "我先停一下，因为这些话太容易把人带偏。"
+      : "I’ll pause, because these patterns can quietly pull us off track.";
+    STATE.chatHistory.push({ role:"assistant", text: fallback, ts: Date.now() });
+    setChatReply(fallback, { isLoading:false });
+
+    if (STATE.chatTurnCount >= STATE.maxTurns) {
+      endChat("maxTurns");
+      return;
+    }
+  } finally {
+    if (myReq === STATE.reqId && STATE.phase === "CHAT") {
+      STATE.isGenerating = false;
+      updateChatButtons();
+    }
   }
 }
 
-window.personaClick = personaClick;
-document.querySelectorAll('.btn[data-type]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    press(btn);
-    personaClick(btn.dataset.type);
-  });
-});
+// ====== RESULT: persona card ======
+const FALLBACK_SUMMARY = {
+  abstract: {
+    zh: [
+      "这样的表达习惯真的是我们想看到的吗？",
+      "0人在意的口头禅，会不会也把人变得更冷？",
+      "刷着刷着就学会了嘲讽，这值得吗？",
+      "当梗变成默认语言，我们还剩下什么？",
+      "把情绪丢给热词，真的能解决问题吗？"
+    ],
+    en: [
+      "Is this really the kind of expression we want to normalize?",
+      "When memes become default speech, what do we lose?",
+      "Does constant scrolling make us speak colder over time?",
+      "If jokes replace meaning, what happens to empathy?",
+      "Are we training attention to disappear?"
+    ]
+  },
+  elegant: {
+    zh: [
+      "有些热词或许应该留在屏幕里，对吗？",
+      "当语言被缩短，理解也会跟着变浅吗？",
+      "我们是否该为表达留出更慢的空间？",
+      "如果总在复读，真实感会不会被磨掉？",
+      "温和而准确的句子，也许更值得练习。"
+    ],
+    en: [
+      "Some buzzwords probably belong on screens, don’t they?",
+      "When language shrinks, does understanding shrink too?",
+      "Perhaps we should leave more room for slower speech.",
+      "If we only repeat, does sincerity fade?",
+      "Precision can be gentle, and worth practicing."
+    ]
+  }
+};
 
-if (resetBtn) {
-  resetBtn.addEventListener('click', () => {
-    press(resetBtn);
-    resetPersona();
-  });
+function personaTitle(persona, lang){
+  if (persona === "abstract") {
+    return lang === "zh" ? "网络冲浪达人" : "Net Surfing Pro";
+  }
+  return lang === "zh" ? "语言边界守护者" : "Language Boundary Keeper";
 }
 
+async function generateResultSummary(){
+  const persona = STATE.persona || "elegant";
+  const lang = STATE.languageMode;
+
+  const samples = FALLBACK_SUMMARY[persona][lang];
+  const memory = STATE.selectedWords.map(w=>w.text).join(lang==="zh" ? "、" : ", ");
+
+  const sys = (lang==="zh")
+    ? `
+你要生成一条“反思性提问句或温和劝诫句”，用于互动作品的结尾档案卡。
+要求：只输出中文一句话，不换行，不表情，不井号，不列表。
+长度：不超过 25 个汉字。
+语气：${persona==="abstract" ? "更网感但仍克制" : "更克制、更有边界感"}。
+需隐含主题：互联网语言、短视频、注意力、表达习惯。
+尽量不要使用比喻句，直接说问题或提醒。
+参考记忆词：${memory}
+你可以参考这些示例的方向但不要照抄：
+- ${samples.slice(0,4).join("\n- ")}
+`.trim()
+    : `
+Generate ONE reflective question or gentle admonition for the ending persona card.
+Rules: exactly ONE English sentence, no emojis, no hashtags, no lists, no newlines.
+Length: <= 18 words.
+Tone: ${persona==="abstract" ? "slightly meme-coded but restrained" : "calm and coherent"}.
+Topic: internet language, short-form video, attention, expression habits.
+Avoid metaphors; do not compare attention to food or objects.
+Fed-word memory: ${memory}
+Reference vibe (do not copy):
+- ${samples.slice(0,4).join("\n- ")}
+`.trim();
+
+  const user = lang==="zh"
+    ? "现在生成一句结尾句。"
+    : "Now generate the ending line.";
+
+  try {
+    const raw = await chatOnce(
+      [{ role:"system", content: sys }, { role:"user", content: user }],
+      { temperature: persona==="abstract" ? 0.9 : 0.7, max_tokens: 80 }
+    );
+    const cleaned = enforceOneSentence(raw, lang, persona);
+    if (lang==="zh" && cleaned.length > 25) {
+      return cleaned.slice(0, 24).replace(/[，、；。]+$/,"") + "？";
+    }
+    if (lang==="en") {
+      const w = cleaned.split(/\s+/);
+      if (w.length > 18) return w.slice(0,18).join(" ").replace(/[.!?]*$/,"") + "?";
+    }
+    return cleaned;
+  } catch {
+    return samples[Math.floor(Math.random()*samples.length)];
+  }
+}
+
+async function openResultCard(){
+  const persona = STATE.persona || "elegant";
+  const lang = STATE.languageMode;
+
+  resultTitle.textContent = personaTitle(persona, lang);
+  resultWords.textContent =
+    (lang==="zh" ? "投喂配方：" : "Fed words: ") +
+    STATE.selectedWords.map(w=>w.text).join(lang==="zh" ? "、" : ", ");
+
+  resultSummary.textContent = (lang==="zh" ? "生成中…" : "Generating…");
+  resultModal.classList.add("open");
+
+  const line = await generateResultSummary();
+  resultSummary.textContent = line;
+}
+
+function endChat(reason){
+  STATE.endReason = reason;
+  STATE.phase = "RESULT";
+  if (wrapEl) wrapEl.dataset.phase = "RESULT";
+  renderPhaseTitle();
+
+  STATE.reqId += 1;
+  STATE.isGenerating = false;
+  updateChatButtons();
+
+  // 清空 chat 顶部回复泡，避免残留
+  setChatReply("");
+
+  openResultCard();
+}
+
+// ====== Reset all ======
+function resetAll(){
+  STATE.reqId += 1;
+  STATE.phase = "FEEDING";
+  STATE.selectedWords = [];
+  STATE.persona = null;
+  STATE.chatHistory = [];
+  STATE.chatTurnCount = 0;
+  STATE.isGenerating = false;
+  STATE.endReason = null;
+  STATE.languageMode = "zh";
+
+  setPhase("FEEDING");
+  swapTheme("neutral");
+  renderSelectedBar();
+  updateFeedingBubble();
+
+  resultModal.classList.remove("open");
+  closeHistory();
+  setChatReply("");
+  updateChatButtons();
+}
+
+// ====== Word cloud layout ======
 let CLOUD_TOKENS = [];
-
-function randomBetween(a,b){ return Math.random()*(b-a)+a; }
-
-function detectLangFromToken(tokenText = '') {
-  return /[\u4e00-\u9fff]/.test(tokenText) ? 'zh' : 'en';
-}
-
-function tierFromCount(count) {
-  return Math.max(0, Math.min(3, Math.floor(count / 5)));
-}
 const DESIGN_W = 1920, DESIGN_H = 1080;
+
 function designToScreenMapper(){
   const W = window.innerWidth, H = window.innerHeight;
-  const scale = Math.max(W / DESIGN_W, H / DESIGN_H); // cover
+  const scale = Math.max(W / DESIGN_W, H / DESIGN_H);
   const ox = (W - DESIGN_W * scale) / 2;
   const oy = (H - DESIGN_H * scale) / 2;
   return (dx, dy) => ({ x: ox + dx * scale, y: oy + dy * scale, scale });
 }
+
 const CX_DESIGN = 960;
 const CY_DESIGN = 540;
 let INNER_GAP_DESIGN = 480;
-let BULGE_DESIGN     = 100;
-let TOP_Y_DESIGN     = 180;
-let BOTTOM_Y_DESIGN  = 780;
+let BULGE_DESIGN = 100;
+let TOP_Y_DESIGN = 180;
+let BOTTOM_Y_DESIGN = 780;
 
 function renderBrackets(){
   if (!CLOUD_TOKENS.length) return;
   cloudEl.innerHTML = '';
+
   const W = window.innerWidth, H = window.innerHeight;
   const toScreen = designToScreenMapper();
-  const left = [], right = [];
-  CLOUD_TOKENS.forEach((t,i)=> (i%2===0?left:right).push(t));
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+  const left=[], right=[];
+  CLOUD_TOKENS.forEach((t,i)=> (i%2===0?left:right).push({ ...t, __i:i }));
+
   function placeSide(list, side){
-    const n = list.length; if(!n) return;
+    const n=list.length; if(!n) return;
+
     for(let k=0;k<n;k++){
-      const t = (k+0.5)/n; // 0..1
+      const t = (k+0.5)/n;
       const yD = TOP_Y_DESIGN + t*(BOTTOM_Y_DESIGN - TOP_Y_DESIGN) + (Math.random()*10-5);
+
       const v = (yD - CY_DESIGN)/((BOTTOM_Y_DESIGN - TOP_Y_DESIGN)/2);
       const c = 1 - Math.pow(Math.abs(v), 1.6);
+
       const offsetXD = INNER_GAP_DESIGN + c * BULGE_DESIGN;
       const xD = side==='left' ? (CX_DESIGN - offsetXD) : (CX_DESIGN + offsetXD);
 
@@ -427,19 +684,31 @@ function renderBrackets(){
 
       const tag = document.createElement('span');
       tag.className = 'tag';
-      tag.dataset.type = list[k].type;
-      tag.textContent = list[k].text;
-      const l = detectLangFromToken(list[k].text);
-      tag.setAttribute('lang', l === 'zh' ? 'zh-Hans' : 'en');
-      const baseRot = side==='left' ? -8 : 8;
+      const id = `${list[k].__i}`;
+      const text = list[k].text;
+      const type = normType(list[k].type);
+
+      tag.dataset.id = id;
+      tag.dataset.type = type;
+      tag.textContent = text;
       tag.style.left = x+'px';
       tag.style.top  = y+'px';
-      tag.style.transform = 'translate(-50%, -50%)';
+
+      tag.classList.toggle("selected", isSelected(id));
+
       tag.addEventListener('click', ()=>{
+        if (STATE.phase !== "FEEDING") return;
+
         press(tag);
-        personaClick(tag.dataset.type, list[k].text);
-        gsap.to(tag,{ y:-6, duration:.12, yoyo:true, repeat:1, ease:"power2.out" });
+        if (window.gsap) gsap.fromTo(tag, { scale: 1 }, { scale: 0.88, duration: 0.08, yoyo:true, repeat:1, ease:"power2.out" });
+
+        if (isSelected(id)) {
+          removeSelected(id);
+        } else {
+          addSelected({ id, text, type });
+        }
       });
+
       cloudEl.appendChild(tag);
     }
   }
@@ -448,32 +717,64 @@ function renderBrackets(){
   placeSide(right,'right');
 }
 
-
-
 fetch('./tokens.json')
   .then(r => r.json())
   .then(data => {
     const list = (data && data.tokens) ? data.tokens.slice() : [];
-    for (let i = list.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+    for (let i=list.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
       [list[i], list[j]] = [list[j], list[i]];
     }
     CLOUD_TOKENS = list;
     renderBrackets();
   })
-  .catch(err => {
-    console.warn("Failed to load tokens.json:", err);
-  });
+  .catch(err => console.warn("Failed to load tokens.json:", err));
 
 window.addEventListener('resize', renderBrackets);
-const personImg = document.getElementById('persona');
-if (personImg && !personImg.complete) {
-  personImg.addEventListener('load', renderBrackets, { once: true });
+
+// ====== Bindings ======
+renderPhaseTitle();
+renderSelectedBar();
+updateChatButtons();
+updateFeedingBubble();
+
+if (resetBtn) {
+  resetBtn.addEventListener("click", () => {
+    press(resetBtn);
+    resetAll();
+  });
 }
 
+if (sendBtn) {
+  sendBtn.addEventListener("click", () => {
+    press(sendBtn);
+    onSend();
+  });
+}
 
-restore();
-updateAwakenStateByRules();
-updateBadges();
-swapTheme(STATE.transformed || 'neutral');
+if (chatInputEl) {
+  chatInputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") onSend();
+  });
+}
 
+if (endBtn) {
+  endBtn.addEventListener("click", () => {
+    press(endBtn);
+    endChat("userEnded");
+  });
+}
+
+if (historyBtn) {
+  historyBtn.addEventListener("click", () => {
+    press(historyBtn);
+    openHistory();
+  });
+}
+
+if (historyBackdrop) historyBackdrop.addEventListener("click", closeHistory);
+if (historyClose) historyClose.addEventListener("click", closeHistory);
+
+if (resultBackdrop) resultBackdrop.addEventListener("click", () => resultModal.classList.remove("open"));
+if (resultClose) resultClose.addEventListener("click", () => resultModal.classList.remove("open"));
+if (restartBtn) restartBtn.addEventListener("click", () => { press(restartBtn); resetAll(); });

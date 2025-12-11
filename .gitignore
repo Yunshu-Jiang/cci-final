@@ -1,0 +1,18 @@
+# Python venv
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Training outputs / datasets (keep scripts, ignore artifacts)
+train/lora_out/
+train/merged_hf/
+
+# Big local model assets (DO NOT COMMIT)
+public/models/Persona-Qwen2.5-1.5B-FT-q4f16_1-MLC-v2/
+public/models/Persona-Qwen2.5-1.5B-FT-q4f16_1-MLC/
+public/models/Qwen2.5-1.5B-Instruct-q4f16_1-MLC
+
+# Optional: if you don't want to commit the dataset
+train/data_train.jsonl

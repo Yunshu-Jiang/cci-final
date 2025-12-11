@@ -1,41 +1,13 @@
 <!doctype html>
-<html lang="zh-Hans">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Persona Demo (Static + WebLLM)</title>
   <style>
-    @font-face {
-      font-family: "Comico";
-      src: url("./fonts/Comico-Regular.otf") format("opentype");
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
+    html,body{ margin:0; height:100%; background:#0f0f11; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto; }
 
-     @font-face {
-      font-family: "MFDianHui";
-      src: url("./fonts/MFDianHui_Noncommercial-Regular.otf") format("opentype");
-      font-weight: 400;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    html,body {
-      margin:0;
-      height:100%;
-      background:#0f0f11;
-      color:#fff;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto;
-    }
-    html, body, .wrap {
-      font-family: "MFDianHui", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    }
-    :lang(en), [lang^="en"] {
-     font-family: "Comico", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-
-    .wrap {
+    .wrap{
       position:relative;
       height:100vh;
       overflow:hidden;
@@ -43,26 +15,13 @@
       background-position:center;
       background-repeat:no-repeat;
     }
-    .wrap.theme-neutral {
-      background-image:url("./img/bg-neutral.png");
-    }
-    .wrap.theme-abstract {
-      background-image:url("./img/bg-abstract.png");
-    }
-    .wrap.theme-literary {
-      background-image:url("./img/bg-literary.png");
-    }
+    .wrap.theme-neutral{ background-image:url("./img/bg-neutral.png"); }
+    .wrap.theme-abstract{ background-image:url("./img/bg-abstract.png"); }
+    .wrap.theme-literary{ background-image:url("./img/bg-literary.png"); }
 
-    #bg {
-  position:absolute;
-  inset:0;
-  z-index:0;
-  pointer-events:none;
-  opacity:1;
-  mix-blend-mode:normal;
-}
+    #bg{ position:absolute; inset:0; z-index:0; pointer-events:none; opacity:1; mix-blend-mode:normal; }
 
-    .persona {
+    .persona{
       position:absolute;
       inset:auto 0 0% 0;
       margin:auto;
@@ -72,229 +31,473 @@
       transform-origin:50% 100%;
     }
 
-    .ui {
-      position:absolute;
-      top:12px;
-      left:12px;
-      z-index:4;
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      align-items:center;
+    /* 左上角 Reset */
+    .ui{
+      position:absolute; top:12px; left:12px; z-index:6;
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+      font-size: clamp(14px, 1.2vw, 20px);
     }
-:root { --ui-stroke: rgba(0,0,0,.45); }
+    :root { --ui-stroke: rgba(0,0,0,.45); }
+    .ui .btn{
+      background: transparent !important; border:none !important; box-shadow:none !important;
+      color:#fff !important; font-weight:700;
+      -webkit-text-stroke: .8px var(--ui-stroke);
+      text-shadow:
+        1px 0 0 var(--ui-stroke),-1px 0 0 var(--ui-stroke),
+        0 1px 0 var(--ui-stroke),0 -1px 0 var(--ui-stroke),
+        1px 1px 0 var(--ui-stroke),-1px 1px 0 var(--ui-stroke),
+        1px -1px 0 var(--ui-stroke),-1px -1px 0 var(--ui-stroke);
+      padding:8px 12px; cursor:pointer; user-select:none; border-radius:12px;
+    }
+    .ui .btn:hover{ opacity:.9; }
+    .ui .btn:active{ transform: translateY(1px); }
 
-.ui .btn,
-.ui .badge{
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: #fff !important;
-  font-weight: 700;
-  -webkit-text-stroke: 0.8px var(--ui-stroke);
-  text-shadow:
-    1px 0 0 var(--ui-stroke),
-   -1px 0 0 var(--ui-stroke),
-    0 1px 0 var(--ui-stroke),
-    0 -1px 0 var(--ui-stroke),
-    1px 1px 0 var(--ui-stroke),
-   -1px 1px 0 var(--ui-stroke),
-    1px -1px 0 var(--ui-stroke),
-   -1px -1px 0 var(--ui-stroke);
-}
-.ui .btn{
-  padding: 8px 12px;
-  cursor: pointer;
-  user-select: none;
-  border-radius: 12px; 
-}
-.ui .badge{ padding: 4px 10px; border-radius: 12px; }
+    /* 顶部阶段标题（灰泡改透明：保留文字样式） */
+    .phase-header{
+      position:absolute;
+      top:16px; left:50%;
+      transform:translateX(-50%);
+      z-index:6;
+      width:min(900px, 92vw);
+      text-align:center;
+      pointer-events:none;
+    }
+    .phase-title{
+      display:inline-block;
+      padding:10px 14px;
+      border-radius:14px;
+      background:transparent;         /* ✅ 透明 */
+      backdrop-filter:none;           /* ✅ 无毛玻璃 */
+      border:none;                    /* ✅ 无边框 */
+      color:#fff;
+      font-weight:700;
+      line-height:1.25;
+      -webkit-text-stroke: .8px rgba(0,0,0,.35);
+      text-shadow:0 1px 2px rgba(0,0,0,.35);
+    }
+    .phase-title .sub{ display:block; font-weight:600; opacity:.95; font-size:0.95em; }
+    .phase-title .hint{ display:block; font-weight:600; opacity:.9; font-size:0.9em; margin-top:2px; }
 
-.ui .btn:hover{ opacity: .9; }
-.ui .btn:active{ transform: translateY(1px); }
-:root { --ui-font-size: clamp(14px, 1.2vw, 20px); }
+    /* 词语云 */
+    .cloud{ position:absolute; inset:0; z-index:4; pointer-events:none; }
+    .tag{
+      position:absolute;
+      pointer-events:auto;
+      display:inline-block;
+      padding:0;
+      background:transparent;
+      border:none;
+      color:#FF8A00;
+      font-size:22px;
+      font-weight:800;
+      line-height:1;
+      letter-spacing:0.2px;
+      text-shadow:0 1px 2px rgba(0,0,0,.35);
+      cursor:pointer;
+      transform:translate(-50%,-50%);
+      transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+    }
+    .tag:hover{ filter: brightness(1.1); }
+    .tag.selected{
+      color:#fff;
+      -webkit-text-stroke: 1px rgba(0,0,0,.55);
+      text-shadow:0 2px 10px rgba(0,0,0,.45);
+      opacity: .98;
+    }
 
-.ui{
-  font-size: var(--ui-font-size);
-}
-
-.ui .btn,
-.ui .badge{
-  font-size: 1em;
-  line-height: 1;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-
-    .bubble {
+    /* 选词槽（保留） */
+    .selected-bar{
       position:absolute;
       left:50%;
-      bottom:20px;
+      top:100px;
       transform:translateX(-50%);
-      box-sizing:border-box;
-      width: clamp(420px, 50vw, 960px);
-      height:15vh;
-      max-height:20vh;
-
-      padding:16px 20px;
-      background:rgba(255,255,255,0.94);
-      color:#111;
-      border-radius:18px 18px 18px 18px;
-      border:1px solid rgba(0,0,0,0.25);
-
-      z-index:5;
-      pointer-events:none;
-
-      display:flex;
+      z-index:6;
+      width:min(1000px, 92vw);
+      display:none;
+      gap:10px;
       align-items:center;
       justify-content:center;
-      text-align:left;
-      font-size:clamp(16px, 1.4vw, 20px);
-      line-height:1.5;
-      overflow:hidden;
-      white-space:normal;
+      flex-wrap:wrap;
+      pointer-events:auto;
     }
-  
-    .bubble:lang(zh),
-    .bubble:lang(zh-Hans),
-    .bubble[lang^="zh"]{
-      font-size: clamp(20px, 1.8vw, 24px);
-      line-height: 1.6;
+    .selected-bar .counter{
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.22);
+      backdrop-filter: blur(6px);
+      font-weight:800;
+    }
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(0,0,0,.25);
+      border:1px solid rgba(255,255,255,.22);
+      backdrop-filter: blur(6px);
+      cursor:pointer;
+      user-select:none;
+      font-weight:750;
+    }
+    .chip .x{
+      width:18px; height:18px;
+      display:inline-flex;
+      align-items:center; justify-content:center;
+      border-radius:6px;
+      background:rgba(255,255,255,.14);
+      font-size:12px;
+      line-height:1;
     }
 
-    .flash {
+    /* FEEDING 底部：白色气泡（保留） */
+    .reply{
       position:absolute;
-      inset:0;
-      background:rgba(255,255,255,0);
-      z-index:2;
+      left:50%;
+      bottom:14px;
+      transform:translateX(-50%);
+      z-index:7;
+      width: min(50vw, 900px);
+      height: 20vh;
+      min-height:140px;
+      max-height:240px;
+      background: rgba(255,255,255,.92);
+      color:#111;
+      border-radius: 18px;
+      border: 1px solid rgba(0,0,0,.12);
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+      display:flex;
+      padding:16px 18px;
+      box-sizing:border-box;
       pointer-events:none;
     }
+    .reply-inner{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      overflow:hidden;
+    }
+    /* ✅ 支持在白泡里放“已选词语气泡” */
+    .reply-text{
+      font-size: clamp(16px, 1.4vw, 22px);
+      line-height: 1.35;
+      overflow:auto;
+      word-break: break-word;
+    }
+    .reply.loading .reply-text{ opacity:.75; }
+    .spinner{
+      width: 22px; height: 22px;
+      border-radius: 999px;
+      border: 2px solid rgba(0,0,0,.2);
+      border-top-color: rgba(0,0,0,.65);
+      animation: spin 1s linear infinite;
+      display:none;
+    }
+    .reply.loading .spinner{ display:block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .cloud{
-  position:absolute;
-  inset:0;
-  z-index:4;
-  pointer-events:none;
-}
+    /* ✅ 白泡里词语 chips */
+    .bubble-chips{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+      margin-bottom:8px;
+    }
+    .feed-chip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      background: rgba(0,0,0,.08);
+      border: 1px solid rgba(0,0,0,.10);
+      user-select:none;
+      cursor:pointer;
+      font-weight:800;
+      color:#111;
+    }
+    .feed-chip .x{
+      width:18px; height:18px;
+      display:inline-flex;
+      align-items:center; justify-content:center;
+      border-radius:6px;
+      background: rgba(0,0,0,.06);
+      font-size:12px;
+      line-height:1;
+    }
+    .feed-chip--empty{
+      opacity:.35;
+      cursor:default;
+    }
+    .bubble-hint{
+      opacity:.85;
+      font-weight:700;
+    }
 
-.tag{
-  position:absolute;
-  pointer-events:auto;
-  display:inline-block;
-  padding:0;
-  background:transparent;
-  border:none;
-  color:#FF8A00;
-  font-size:20px;
-  font-weight:700;
-  line-height:1;
-  letter-spacing:0.2px;
-  text-shadow:0 1px 2px rgba(0,0,0,.35);
-}
-.tag:lang(zh),
-.tag:lang(zh-Hans),
-.tag[lang^="zh"]{
-  font-size: 28px;
-  letter-spacing: 0.1px;
-}
-.tag[data-type="abstract"],
-.tag[data-type="literary"]{
-  border: none;
-}
+    /* CHAT UI（阶段二）：去掉底部白泡；AI 回复泡放在输入框上方 */
+    .chat-ui{
+      position:absolute;
+      left:50%;
+      bottom:14px;
+      transform:translateX(-50%);
+      z-index:7;
+      width:min(900px, 92vw);
+      display:none;
+      flex-direction:column;
+      gap:10px;
+      pointer-events:auto;
+    }
+    .chat-reply{
+      width:100%;
+      background: rgba(255,255,255,.86);
+      color:#111;
+      border-radius: 18px;
+      border: 1px solid rgba(0,0,0,.10);
+      box-shadow: 0 18px 60px rgba(0,0,0,.28);
+      padding:14px 16px;
+      box-sizing:border-box;
+      font-size: clamp(16px, 1.35vw, 22px);
+      line-height:1.35;
+      min-height: 56px;     /* 有内容时自然增高 */
+      max-height: 180px;    /* 太长就滚动 */
+      overflow:auto;
+      white-space:pre-wrap;
+      word-break:break-word;
+      display:none;
+    }
 
-.intro {
-  position:absolute;
-  inset:0;
-  z-index:20;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background: rgba(0,0,0,0.12);
-}
+    /* CHAT 输入条（灰色框） */
+    .chat-bar{
+      width:100%;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      pointer-events:auto;
+    }
+    .chat-bar input{
+      flex:1;
+      height:46px;
+      padding:0 14px;
+      border-radius: 14px;
+      border:1px solid rgba(255,255,255,.25);
+      background: rgba(0,0,0,.25);
+      color:#fff;
+      outline:none;
+      backdrop-filter: blur(6px);
+      font-size:16px;
+    }
+    .chat-bar button{
+      height:46px;
+      padding:0 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.22);
+      background: rgba(0,0,0,.25);
+      color:#fff;
+      font-weight:800;
+      cursor:pointer;
+      backdrop-filter: blur(6px);
+    }
+    .chat-bar button:disabled{ opacity:.5; cursor:not-allowed; }
 
-.intro-card{
-  width: min(50vw, 900px);
-  height: min(50vh, 520px);
-  padding: 28px 28px 22px;
-  box-sizing: border-box;
+    /* History 抽屉 */
+    .drawer{
+      position:absolute;
+      inset:0;
+      z-index:20;
+      display:none;
+      pointer-events:auto;
+    }
+    .drawer.open{ display:block; }
+    .drawer .backdrop{
+      position:absolute; inset:0;
+      background: rgba(0,0,0,.55);
+    }
+    .drawer .panel{
+      position:absolute;
+      right:0; top:0; height:100%;
+      width:min(460px, 92vw);
+      background: rgba(20,20,24,.92);
+      border-left:1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(10px);
+      display:flex;
+      flex-direction:column;
+    }
+    .drawer .panel header{
+      padding:14px 16px;
+      display:flex; align-items:center; justify-content:space-between;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      font-weight:900;
+    }
+    .drawer .panel header button{
+      border:none;
+      background: rgba(255,255,255,.1);
+      color:#fff;
+      border-radius:10px;
+      padding:8px 10px;
+      cursor:pointer;
+      font-weight:800;
+    }
+    .history-list{
+      padding:14px 16px;
+      overflow:auto;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .msg{
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.06);
+      line-height:1.35;
+      font-size: 14px;
+      white-space:pre-wrap;
+    }
+    .msg.user{ background: rgba(255,138,0,.10); border-color: rgba(255,138,0,.22); }
+    .msg.assistant{ background: rgba(130,170,255,.08); border-color: rgba(130,170,255,.20); }
 
-  background: rgba(255,255,255,0.82);
-  color:#111;
-  border: 1px solid rgba(0,0,0,0.18);
-  border-radius: 22px;
-  box-shadow: 0 18px 60px rgba(0,0,0,0.25);
+    /* RESULT 档案卡 */
+    .modal{
+      position:absolute;
+      inset:0;
+      z-index:30;
+      display:none;
+      pointer-events:auto;
+      align-items:center;
+      justify-content:center;
+    }
+    .modal.open{ display:flex; }
+    .modal .backdrop{
+      position:absolute; inset:0;
+      background: rgba(0,0,0,.65);
+    }
+    .card{
+      position:relative;
+      width:min(720px, 92vw);
+      background: rgba(255,255,255,.92);
+      color:#111;
+      border-radius: 22px;
+      box-shadow: 0 22px 80px rgba(0,0,0,.45);
+      padding: 22px 22px 18px;
+      box-sizing:border-box;
+    }
+    .card h2{ margin:0 0 8px; font-size:26px; }
+    .card .summary{ font-size:18px; line-height:1.4; margin: 10px 0 14px; }
+    .card .words{ font-size:14px; opacity:.85; margin-bottom: 16px; }
+    .card .actions{ display:flex; gap:10px; justify-content:flex-end; }
+    .card .actions button{
+      border:none;
+      border-radius:14px;
+      padding:10px 14px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .card .actions .primary{ background:#111; color:#fff; }
+    .card .actions .ghost{ background: rgba(0,0,0,.08); color:#111; }
 
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap: 18px;
-  text-align:center;
-}
+    /* 变身闪光层 */
+    .flash{ position:absolute; inset:0; background:rgba(255,255,255,0); z-index:2; pointer-events:none; }
 
-.intro-text{
-  font-size: clamp(18px, 2vw, 28px);
-  line-height: 1.35;
-  font-weight: 700;
-  letter-spacing: .2px;
-}
+    /* phase 显隐控制 */
+    .wrap[data-phase="FEEDING"] .selected-bar{ display:flex; }
+    .wrap[data-phase="FEEDING"] #cloud{ display:block; }
+    .wrap[data-phase="FEEDING"] .reply{ display:flex; pointer-events:auto; } /* ✅ FEEDING 白泡可点 chips */
+    .wrap[data-phase="FEEDING"] .chat-ui{ display:none; }
 
-.intro-start{
-  border: 1px solid rgba(0,0,0,0.25);
-  background: rgba(255,255,255,0.65);
-  color:#111;
-  padding: 10px 18px;
-  border-radius: 14px;
-  cursor:pointer;
-  font-weight: 800;
-  font-size: 16px;
-}
+    .wrap[data-phase="CHAT"] .selected-bar{ display:none; }
+    .wrap[data-phase="CHAT"] #cloud{ display:none; }
+    .wrap[data-phase="CHAT"] .reply{ display:none; }       /* ✅ 阶段二去掉底部白泡 */
+    .wrap[data-phase="CHAT"] .chat-ui{ display:flex; }
+    .wrap[data-phase="CHAT"] .chat-reply{ display:block; }
 
-.intro-start:hover{ filter: brightness(1.02); }
-.intro-start:active{ transform: translateY(1px); }
-.wrap.is-locked .tag { pointer-events:none; opacity:.65; }
-.wrap.is-locked #reset-btn { pointer-events:none; opacity:.65; }
-.toast {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  z-index: 30;
-  pointer-events: none;
-  width: min(420px, 44vw);
-  padding: 14px 16px;
-  box-sizing: border-box;
-  background: rgba(255,255,255,0.82);
-  color: #111;
-  border: 1px solid rgba(0,0,0,0.18);
-  border-radius: 16px;
-  box-shadow: 0 14px 40px rgba(0,0,0,0.18);
-  font-size: 14px;
-  line-height: 1.45;
-}
-.toast .toast-zh { font-weight: 700; }
-.toast .toast-en { margin-top: 6px; opacity: 0.85; }
-
+    .wrap[data-phase="RESULT"] .selected-bar{ display:none; }
+    .wrap[data-phase="RESULT"] #cloud{ display:none; }
+    .wrap[data-phase="RESULT"] .reply{ display:none; }
+    .wrap[data-phase="RESULT"] .chat-ui{ display:none; }
 
   </style>
 </head>
+
 <body>
-  <div class="wrap theme-neutral" id="wrap">
+  <div class="wrap theme-neutral" id="wrap" data-phase="FEEDING">
     <div id="bg"></div>
+
     <img id="persona" class="persona" src="./img/person-neutral.png" alt="persona" />
+
     <div class="ui">
       <button class="btn" id="reset-btn">Reset</button>
-      <span class="badge" id="stats" style="display:none">Abstract 0 · Literary 0</span>
-      <span class="badge" id="mode" style="display:none">Neutral</span>
     </div>
-    <div id="intro" class="intro" aria-label="intro">
-     <div class="intro-card">
-      <div class="intro-text">你想让它听到什么？<br/>What do you want it to hear?</div>
-      <button id="start-btn" class="intro-start">Start</button>
-     </div>
+
+    <!-- 顶部阶段标题 -->
+    <div class="phase-header">
+      <div class="phase-title" id="phase-title"></div>
     </div>
+
+    <!-- FEEDING：已选词槽（保留） -->
+    <div class="selected-bar" id="selected-bar" aria-label="selected-words">
+      <div class="counter" id="selected-counter">0/5</div>
+      <div id="selected-list" style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;"></div>
+    </div>
+
+    <!-- 词语云 -->
     <div id="cloud" class="cloud" aria-label="word-cloud"></div>
+
+    <!-- CHAT UI（阶段二） -->
+    <div id="chat-ui" class="chat-ui">
+      <!-- AI 回复泡（灰色输入框上方，宽度一致，高度随内容） -->
+      <div id="chat-reply" class="chat-reply" aria-live="polite"></div>
+
+      <div id="chat-bar" class="chat-bar">
+        <input id="chat-input" class="chat-input" placeholder="输入你想说的话 / Type your message" />
+        <button id="send-btn" class="chat-btn">发送 / Send</button>
+        <button id="history-btn" class="chat-btn">History</button>
+        <button id="end-btn" class="chat-btn">结束 / End</button>
+      </div>
+    </div>
+
+    <!-- FEEDING：底部白色气泡 -->
+    <div class="reply" id="reply">
+      <div class="reply-inner">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="spinner" id="reply-spinner"></div>
+          <div style="font-weight:900; opacity:.8;" id="reply-label">Reply</div>
+        </div>
+        <div class="reply-text" id="reply-text">点击词语开始投喂 / Click words to feed</div>
+      </div>
+    </div>
+
+    <!-- History Drawer -->
+    <div class="drawer" id="history-drawer" aria-label="history">
+      <div class="backdrop" id="history-backdrop"></div>
+      <div class="panel">
+        <header>
+          <div>Chat History</div>
+          <button id="history-close">Close</button>
+        </header>
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </div>
+
+    <!-- RESULT Modal -->
+    <div class="modal" id="result-modal" aria-label="result">
+      <div class="backdrop" id="result-backdrop"></div>
+      <div class="card">
+        <h2 id="result-title">Persona</h2>
+        <div class="summary" id="result-summary">…</div>
+        <div class="words" id="result-words"></div>
+        <div class="actions">
+          <button class="ghost" id="result-close">Close</button>
+          <button class="primary" id="restart-btn">重新开始 / Restart</button>
+        </div>
+      </div>
+    </div>
+
     <div class="flash" id="flash"></div>
   </div>
+
   <script src="https://unpkg.com/p5@1.9.3/lib/p5.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
   <script type="module" src="./js/app.js"></script>
