@@ -1,9 +1,20 @@
 # Python venv
 .venv/
 venv/
+__pycache__/
+*.pyc
+*.pyo
 
-# Node
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Node / Web ----
 node_modules/
+.next/
+dist/
+build/
+
 
 # Training outputs / datasets (keep scripts, ignore artifacts)
 train/lora_out/
@@ -16,3 +27,24 @@ public/models/Qwen2.5-1.5B-Instruct-q4f16_1-MLC
 
 # Optional: if you don't want to commit the dataset
 train/data_train.jsonl
+
+# ---- Training data (DO NOT COMMIT) ----
+public/training_model/data/
+*.csv
+*.jsonl
+
+# ---- Model outputs / checkpoints ----
+public/training_model/lora_abstract/
+public/training_model/lora_literary/
+**/checkpoint-*/
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+
+# ---- HF / training caches ----
+**/.cache/
+**/cache/
+wandb/
+runs/
+logs/
