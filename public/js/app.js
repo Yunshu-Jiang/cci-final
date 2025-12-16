@@ -5,23 +5,19 @@ import { ensureAI, chatOnce } from './ai-webllm.js';
 const wrapEl = document.getElementById('wrap');
 const cloudEl = document.getElementById('cloud');
 const resetBtn = document.getElementById('reset-btn');
-
 const phaseTitleEl = document.getElementById('phase-title');
-
 const selectedCounterEl = document.getElementById('selected-counter');
 const selectedListEl = document.getElementById('selected-list');
-
 const chatBarEl = document.getElementById('chat-bar');
 const chatInputEl = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
+const SEND_BTN_DEFAULT_TEXT = sendBtn?.textContent || "Send";
 const endBtn = document.getElementById('end-btn');
 const historyBtn = document.getElementById('history-btn');
-
 const historyDrawer = document.getElementById('history-drawer');
 const historyBackdrop = document.getElementById('history-backdrop');
 const historyClose = document.getElementById('history-close');
 const historyList = document.getElementById('history-list');
-
 const resultModal = document.getElementById('result-modal');
 const resultBackdrop = document.getElementById('result-backdrop');
 const resultClose = document.getElementById('result-close');
@@ -29,19 +25,16 @@ const restartBtn = document.getElementById('restart-btn');
 const resultTitle = document.getElementById('result-title');
 const resultSummary = document.getElementById('result-summary');
 const resultWords = document.getElementById('result-words');
-
-// 新增：模型加载提示弹窗相关节点
 const modelHintModal = document.getElementById('model-hint');
 const modelHintBackdrop = document.getElementById('model-hint-backdrop');
 const modelHintOk = document.getElementById('model-hint-ok');
 const modelHintText = document.getElementById('model-hint-text');
 
-// anim helpers
+
 function press(el){ window.__press && window.__press(el); }
 function bubble(text, opts){ window.__bubble && window.__bubble(text, opts); }
 function swapTheme(theme){ window.__swapTheme && window.__swapTheme(theme); }
 
-// ===== UI helpers：FEEDING 白泡 chips + CHAT 回复泡 =====
 const chatReplyEl = document.getElementById("chat-reply");
 
 function setChatReply(text, { isLoading = false } = {}) {
@@ -50,7 +43,6 @@ function setChatReply(text, { isLoading = false } = {}) {
   chatReplyEl.style.opacity = isLoading ? "0.75" : "1";
 }
 
-// 安全转义
 function escapeHtml(s = "") {
   return String(s).replace(/[&<>"']/g, (m) => ({
     "&": "&amp;",
@@ -61,7 +53,6 @@ function escapeHtml(s = "") {
   }[m]));
 }
 
-// FEEDING：底部白泡里的 chips
 function renderFeedChipsHTML(selectedWords) {
   const chosen = (selectedWords || []).map((w) => `
     <span class="feed-chip" data-chip-id="${escapeHtml(w.id)}">
@@ -94,7 +85,6 @@ function updateFeedingBubble(noteText = null) {
   });
 }
 
-// FEEDING 白泡里的 chips 点击删除
 document.addEventListener("click", (e) => {
   const chip = e.target.closest("[data-chip-id]");
   if (!chip) return;
@@ -106,7 +96,6 @@ document.addEventListener("click", (e) => {
   updateFeedingBubble();
 });
 
-// ====== Global State ======
 const MAX_FEED = 5;
 const MAX_TURNS = 5;
 
@@ -123,7 +112,6 @@ const STATE = {
   reqId: 0
 };
 
-// ====== Language detect ======
 function detectLanguage(text, prev = "zh"){
   const s = String(text || "");
   if (/[\u4e00-\u9fff]/.test(s)) return "zh";
@@ -131,7 +119,6 @@ function detectLanguage(text, prev = "zh"){
   return prev || "zh";
 }
 
-// ====== Type normalize ======
 function normType(t){
   if (t === "abstract") return "abstract";
   if (t === "elegant") return "elegant";
@@ -145,7 +132,6 @@ function personaToTheme(persona){
   return "neutral";
 }
 
-// ====== One-sentence enforcement ======
 function enforceOneSentence(raw, lang, persona){
   let s = String(raw || "").replace(/\r/g,"").trim();
   if (!s) return lang === "zh" ? "我需要一点时间整理一下。"
@@ -189,7 +175,6 @@ function enforceOneSentence(raw, lang, persona){
   return out;
 }
 
-// ====== Phase title ======
 function renderPhaseTitle(){
   if (!phaseTitleEl) return;
   if (STATE.phase === "FEEDING") {
@@ -207,7 +192,6 @@ function renderPhaseTitle(){
   }
 }
 
-// ====== Selected words UI ======
 function isSelected(id){
   return STATE.selectedWords.some(w => w.id === id);
 }
@@ -254,14 +238,12 @@ function removeSelected(id){
   updateFeedingBubble();
 }
 
-// ====== Phase switch ======
 function setPhase(phase){
   STATE.phase = phase;
   if (wrapEl) wrapEl.dataset.phase = phase;
   renderPhaseTitle();
 }
 
-// ====== FEEDING submit -> decide persona -> theme switch -> enter CHAT ======
 function decidePersonaFrom5(){
   const a = STATE.selectedWords.filter(w => w.type === "abstract").length;
   const e = MAX_FEED - a;
@@ -273,7 +255,7 @@ function enterChat(){
   STATE.chatTurnCount = 0;
   STATE.isGenerating = false;
   STATE.endReason = null;
-
+  clearViewCardMode();
   setPhase("CHAT");
   setChatReply(
     STATE.languageMode === "zh"
@@ -291,7 +273,6 @@ function submitFeeding(){
   enterChat();
 }
 
-// ====== CHAT: history drawer ======
 function openHistory(){
   if (STATE.phase !== "CHAT") return;
   renderHistoryList();
@@ -311,14 +292,12 @@ function renderHistoryList(){
   historyList.scrollTop = historyList.scrollHeight;
 }
 
-// ====== Prompt templates ======
 function buildSystemPrompt(persona, lang, selectedWords){
-  const memory = selectedWords.map(w=>w.text).join(lang==="zh" ? "、" : ", ");
+  const memory = "";
   if (lang === "zh") {
     if (persona === "abstract") {
       return `
 你是一个被中文互联网流行语长期包围的青少年，说话更网感、更碎、更情绪化，但仍可读。
-你被“喂过”的词语记忆是：${memory}
 
 硬规则：
 - 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
@@ -331,7 +310,6 @@ function buildSystemPrompt(persona, lang, selectedWords){
     }
     return `
 你是一个克制、连贯、温和但清醒的中文叙述者，强调逻辑与连接词。
-你被“喂过”的词语记忆是：${memory}
 
 硬规则：
 - 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
@@ -344,7 +322,6 @@ function buildSystemPrompt(persona, lang, selectedWords){
   if (persona === "abstract") {
     return `
 You are an internet-native teen voice: meme-coded, jumpy, a bit fragmented, but still readable.
-Your “fed words” memory: ${memory}
 
 Hard rules:
 - Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
@@ -355,7 +332,6 @@ Hard rules:
 
   return `
 You are a calm, coherent, reflective voice with gentle logic.
-Your “fed words” memory: ${memory}
 
 Hard rules:
 - Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
@@ -372,8 +348,9 @@ function buildUserPrompt(lang, userText){
 }
 
 async function generateAssistantReply(userText){
-  const persona = STATE.persona || "elegant";
+  const persona = STATE.persona || "elegant"; // abstract / elegant(=literary)
   const lang = STATE.languageMode;
+
   const sys = buildSystemPrompt(persona, lang, STATE.selectedWords);
   const usr = buildUserPrompt(lang, userText);
 
@@ -384,24 +361,53 @@ async function generateAssistantReply(userText){
 
   const messages = [
     { role:"system", content: sys },
-    ...STATE.chatHistory.slice(-6).map(m => ({ role: m.role, content: m.text })),
     { role:"user", content: usr }
   ];
 
-  const raw = await chatOnce(messages, { temperature, max_tokens });
+  const raw = await chatOnce(messages, { temperature, max_tokens }, persona);
+
   return enforceOneSentence(raw, lang, persona);
 }
 
-// ====== CHAT send ======
+
 function updateChatButtons(){
   const inChat = STATE.phase === "CHAT";
-  if (sendBtn) sendBtn.disabled = !inChat || STATE.isGenerating;
+  const viewCard = sendBtn?.dataset?.mode === "view-card";
+  if (sendBtn) sendBtn.disabled = !inChat || (STATE.isGenerating && !viewCard);
   if (endBtn) endBtn.disabled = !inChat;
   if (historyBtn) historyBtn.disabled = !inChat;
 }
 
+function isViewCardMode() {
+  return sendBtn?.dataset?.mode === "view-card";
+}
+
+function lockChatToViewCardButton() {
+  if (chatInputEl) {
+    chatInputEl.value = "";
+    chatInputEl.disabled = true;
+    chatInputEl.placeholder = "查看人格卡片 / View persona card";
+  }
+
+  if (sendBtn) {
+    sendBtn.disabled = false;
+    sendBtn.textContent = "查看人格卡片 / View persona card";
+    sendBtn.dataset.mode = "view-card";
+  }
+
+  setChatReply("点击查看人格卡片 / Tap to view persona card", { isLoading: false });
+}
+
+
 async function onSend(){
   if (STATE.phase !== "CHAT") return;
+
+  if (isViewCardMode()) {
+    press(sendBtn);
+    endChat("maxTurns");
+    return;
+  }
+
   const text = String(chatInputEl?.value || "").trim();
   if (!text) return;
 
@@ -419,7 +425,9 @@ async function onSend(){
   const myReq = ++STATE.reqId;
 
   try {
-    await ensureAI();
+    
+    await ensureAI(STATE.persona || "elegant");
+
     const reply = await generateAssistantReply(text);
 
     if (myReq !== STATE.reqId) return;
@@ -429,7 +437,9 @@ async function onSend(){
     setChatReply(reply, { isLoading:false });
 
     if (STATE.chatTurnCount >= STATE.maxTurns) {
-      endChat("maxTurns");
+      STATE.isGenerating = false;
+      updateChatButtons();
+      lockChatToViewCardButton();
       return;
     }
   } catch (e) {
@@ -437,24 +447,29 @@ async function onSend(){
     if (myReq !== STATE.reqId) return;
 
     const fallback = STATE.languageMode === "zh"
-      ? "我先停一下，因为这些话太容易把人带偏。"
-      : "I’ll pause, because these patterns can quietly pull us off track.";
+      ? "出错了，请再试一次。"
+      : "Something is wrong. Please try again.";
+
     STATE.chatHistory.push({ role:"assistant", text: fallback, ts: Date.now() });
     setChatReply(fallback, { isLoading:false });
 
     if (STATE.chatTurnCount >= STATE.maxTurns) {
-      endChat("maxTurns");
+      STATE.isGenerating = false;
+      updateChatButtons();
+      lockChatToViewCardButton();
       return;
     }
   } finally {
     if (myReq === STATE.reqId && STATE.phase === "CHAT") {
-      STATE.isGenerating = false;
-      updateChatButtons();
+      if (!isViewCardMode()) {
+        STATE.isGenerating = false;
+        updateChatButtons();
+      }
     }
   }
 }
 
-// ====== RESULT: persona card ======
+
 const FALLBACK_SUMMARY = {
   abstract: {
     zh: [
@@ -532,9 +547,11 @@ Reference vibe (do not copy):
 
   try {
     const raw = await chatOnce(
-      [{ role:"system", content: sys }, { role:"user", content: user }],
-      { temperature: persona==="abstract" ? 0.9 : 0.7, max_tokens: 80 }
+     [{ role:"system", content: sys }, { role:"user", content: user }],
+     { temperature: persona==="abstract" ? 0.9 : 0.7, max_tokens: 80 },
+     persona
     );
+
     const cleaned = enforceOneSentence(raw, lang, persona);
     if (lang==="zh" && cleaned.length > 25) {
       return cleaned.slice(0, 24).replace(/[，、；。]+$/,"") + "？";
@@ -592,7 +609,7 @@ function resetAll(){
   STATE.isGenerating = false;
   STATE.endReason = null;
   STATE.languageMode = "zh";
-
+  clearViewCardMode();
   setPhase("FEEDING");
   swapTheme("neutral");
   renderSelectedBar();
@@ -701,7 +718,6 @@ fetch('./tokens.json')
 
 window.addEventListener('resize', renderBrackets);
 
-// ====== 模型加载提示：只在第一次打开时显示 + 预热模型 ======
 const MODEL_HINT_KEY = "webllm_model_hint_seen_v1";
 
 function openModelHint(){
@@ -723,7 +739,7 @@ function initModelHint(){
   })();
 
   if (!seen) {
-    // 第一次访问：弹窗 + 后台预热模型
+
     openModelHint();
 
     ensureAI().then(() => {
@@ -750,7 +766,6 @@ function initModelHint(){
   }
 }
 
-// ====== Bindings ======
 renderPhaseTitle();
 renderSelectedBar();
 updateChatButtons();

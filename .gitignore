@@ -15,6 +15,11 @@ node_modules/
 dist/
 build/
 
+# ---- Editor / local env ----
+.vscode/
+.idea/
+.env
+.env.*
 
 # Training outputs / datasets (keep scripts, ignore artifacts)
 train/lora_out/
@@ -48,3 +53,10 @@ public/training_model/lora_literary/
 wandb/
 runs/
 logs/
+
+# ---- MLC compiled/converted model artifacts (DO NOT COMMIT) ----
+public/training_model/dist_mlc/
+
+# ---- Local toolchains (DO NOT COMMIT) ----
+mlc-llm/
+emsdk/

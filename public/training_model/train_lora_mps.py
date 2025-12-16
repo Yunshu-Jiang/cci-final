@@ -19,9 +19,10 @@ def messages_to_text(example, tokenizer):
     )
 
 def main():
-    use_mps = torch.backends.mps.is_available()
-    device_map = {"": "mps"} if use_mps else "auto"
-    dtype = torch.float16 if use_mps else torch.bfloat16
+    use_cuda = torch.cuda.is_available()
+    device_map = "auto"
+    dtype = torch.bfloat16 if use_cuda else torch.float32
+
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True, trust_remote_code=True)
     if tokenizer.pad_token is None:
@@ -81,7 +82,7 @@ def main():
         save_total_limit=2,
         optim="adamw_torch",
         report_to="none",
-        fp16=False,
+        fp16=True,
         bf16=False,
         dataloader_num_workers=0,
     )
