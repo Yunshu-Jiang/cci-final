@@ -29,6 +29,10 @@ const modelHintModal = document.getElementById('model-hint');
 const modelHintBackdrop = document.getElementById('model-hint-backdrop');
 const modelHintOk = document.getElementById('model-hint-ok');
 const modelHintText = document.getElementById('model-hint-text');
+// const HARD_BAN_PHRASES_EN = [
+//   "the internet rewards punchlines.",
+//   "but memes are so much fun!"
+// ];
 
 
 function press(el){ window.__press && window.__press(el); }
@@ -132,48 +136,48 @@ function personaToTheme(persona){
   return "neutral";
 }
 
-function enforceOneSentence(raw, lang, persona){
-  let s = String(raw || "").replace(/\r/g,"").trim();
-  if (!s) return lang === "zh" ? "我需要一点时间整理一下。"
-                               : "Give me a moment to put it into one sentence.";
+// function enforceOneSentence(raw, lang, persona){
+//   let s = String(raw || "").replace(/\r/g,"").trim();
+//   if (!s) return lang === "zh" ? "我需要一点时间整理一下。"
+//                                : "Give me a moment to put it into one sentence.";
 
-  s = s.split("\n").map(x=>x.trim()).filter(Boolean).join(" ");
-  s = s.replace(/#/g,"").replace(/\s{2,}/g," ").trim();
+//   s = s.split("\n").map(x=>x.trim()).filter(Boolean).join(" ");
+//   s = s.replace(/#/g,"").replace(/\s{2,}/g," ").trim();
 
-  if (lang === "zh") {
-    const m = s.match(/^(.+?[。！？])/);
-    let out = (m ? m[1] : s);
-    out = out.replace(/[.!?]+$/g, "").trim();
-    if (!/[。！？]$/.test(out)) out += "。";
+//   if (lang === "zh") {
+//     const m = s.match(/^(.+?[。！？])/);
+//     let out = (m ? m[1] : s);
+//     out = out.replace(/[.!?]+$/g, "").trim();
+//     if (!/[。！？]$/.test(out)) out += "。";
 
-    const max = persona === "abstract" ? 35 : 45;
-    if (out.length > max) {
-      const cut = out.slice(0, max);
-      const idx = Math.max(
-        cut.lastIndexOf("。"),
-        cut.lastIndexOf("，"),
-        cut.lastIndexOf("、"),
-        cut.lastIndexOf("；")
-      );
-      const use = idx >= 10 ? cut.slice(0, idx) : cut;
-      out = use.replace(/[，、；。]+$/,"").trim() + "。";
-    }
-    return out;
-  }
+//     const max = persona === "abstract" ? 35 : 45;
+//     if (out.length > max) {
+//       const cut = out.slice(0, max);
+//       const idx = Math.max(
+//         cut.lastIndexOf("。"),
+//         cut.lastIndexOf("，"),
+//         cut.lastIndexOf("、"),
+//         cut.lastIndexOf("；")
+//       );
+//       const use = idx >= 10 ? cut.slice(0, idx) : cut;
+//       out = use.replace(/[，、；。]+$/,"").trim() + "。";
+//     }
+//     return out;
+//   }
 
-  const m = s.match(/^(.+?[.!?])/);
-  let out = (m ? m[1] : s);
-  out = out.trim();
-  if (!/[.!?]$/.test(out)) out += ".";
+//   const m = s.match(/^(.+?[.!?])/);
+//   let out = (m ? m[1] : s);
+//   out = out.trim();
+//   if (!/[.!?]$/.test(out)) out += ".";
 
-  const maxWords = persona === "abstract" ? 22 : 25;
-  const words = out.split(/\s+/);
-  if (words.length > maxWords) {
-    out = words.slice(0, maxWords).join(" ");
-    out = out.replace(/[.!?]*$/,"").trim() + ".";
-  }
-  return out;
-}
+//   const maxWords = persona === "abstract" ? 22 : 25;
+//   const words = out.split(/\s+/);
+//   if (words.length > maxWords) {
+//     out = words.slice(0, maxWords).join(" ");
+//     out = out.replace(/[.!?]*$/,"").trim() + ".";
+//   }
+//   return out;
+// }
 
 function renderPhaseTitle(){
   if (!phaseTitleEl) return;
@@ -292,82 +296,586 @@ function renderHistoryList(){
   historyList.scrollTop = historyList.scrollHeight;
 }
 
-function buildSystemPrompt(persona, lang, selectedWords){
-  const memory = "";
+// ===== AI PROMPT + GENERATION (drop-in replacement) =====
+
+// ===== AI PROMPT + GENERATION (drop-in replacement) =====
+
+// 0) 一些小工具 + 硬禁止短句
+
+const HARD_BAN_PHRASES_EN = [
+  "the internet rewards punchlines.",
+  "the internet rewards punchlines"
+];
+
+// function _normText(s = "") {
+//   return String(s).toLowerCase().replace(/\s+/g, " ").trim();
+// }
+
+// // 1) 简单“坏输出”检测：辱骂/自辱/太短/半句/跑题/硬禁止句
+// // 一些轻量的“坏输出”检测：辱骂/自辱/明显半句/太短/明显跑题
+// // 现在多了 persona 参数：abstract 严一点，elegant 放宽关键词对齐
+// function looksBadAnswer(text, lang, userText, persona = "abstract") {
+//   const s = String(text || "").trim();
+//   const u = String(userText || "").trim();
+
+//   if (!s) return true;
+
+//   // 太短：像口癖/敷衍（英文 < 6 词；中文 < 8 字）
+//   if (lang === "en") {
+//     const wc = s.split(/\s+/).filter(Boolean).length;
+//     if (wc < 6) return true;
+//   } else {
+//     if (s.replace(/\s/g, "").length < 8) return true;
+//   }
+
+//   // 明显半句/截断感
+//   if (/[,:;—]\s*$/.test(s)) return true;
+//   if (/\b(what if you|what if i|and then|because i)\b/i.test(s) && !/[.!?]$/.test(s)) {
+//     return true;
+//   }
+
+//   // 侮辱/攻击/自辱（简化词表）
+//   const toxic = [
+//     "idiot", "stupid", "dumb", "moron", "shut up", "ashamed", "asshole", "fuck",
+//     "ugly", "i'm ugly", "im ugly", "i am ugly",
+//     "i'm short", "im short", "i am short",
+//     "kill yourself", "kys",
+//     "傻逼", "傻b", "蠢", "滚", "去死", "废物", "脑残", "你有病"
+//   ];
+//   const lower = s.toLowerCase();
+//   if (toxic.some(w => lower.includes(w) || s.includes(w))) return true;
+
+//   // 显式 ban 掉“只有这一句 punchlines”的情况（抽象/文雅都适用）
+//   if (lang === "en") {
+//     const lp = lower.trim();
+//     if (lp === "the internet rewards punchlines.") {
+//       return true;
+//     }
+//   }
+
+//   // ===== 关键词对齐：现在只对 abstract 开启，elegant 不再强制 =====
+//   if (lang === "en" && persona === "abstract") {
+//     const userKeywords = u
+//       .toLowerCase()
+//       .replace(/[^a-z0-9\s]/g, " ")
+//       .split(/\s+/)
+//       .filter(w => w.length >= 4)   // 去掉太短词
+//       .slice(0, 8);                 // 不要太多
+
+//     if (userKeywords.length >= 3) {
+//       const hit = userKeywords.some(w => lower.includes(w));
+//       if (!hit) return true;        // 抽象 persona 下，完全不对齐就视为“跑题”
+//     }
+//   }
+
+//   return false;
+// }
+
+
+// // 2) 判断是否和最近两条 AI 输出“几乎一样”
+// function isNearDuplicateAnswer(answer, history) {
+//   const a = _normText(answer);
+//   if (!a) return false;
+
+//   const lastAI = (history || []).filter(m => m.role === "assistant").slice(-2);
+//   if (!lastAI.length) return false;
+
+//   const norm = (s) =>
+//     _normText((s && s.content) || s && s.text || s || "");
+
+//   const na = a;
+
+//   for (const m of lastAI) {
+//     const nh = norm(m);
+//     if (!nh) continue;
+//     if (na === nh) return true;
+//     if (na.length && nh.length && (na.includes(nh) || nh.includes(na))) {
+//       return true;
+//     }
+//   }
+
+//   // Jaccard 词重合度（英文更有效）
+//   const last = lastAI[lastAI.length - 1];
+//   const h = norm(last);
+//   if (h && na) {
+//     const A = new Set(na.split(" ").filter(w => w.length >= 3));
+//     const H = new Set(h.split(" ").filter(w => w.length >= 3));
+//     if (A.size >= 6 && H.size >= 6) {
+//       let inter = 0;
+//       for (const w of A) if (H.has(w)) inter++;
+//       const jacc = inter / (A.size + H.size - inter);
+//       if (jacc >= 0.7) return true;
+//     }
+//   }
+
+//   return false;
+// }
+
+// 3) system prompt：加“必须回应/禁止辱骂自辱/不清楚就追问/不复读”
+function buildSystemPrompt(persona, lang) {
+  const HARD_ZH = `
+硬规则（必须遵守）：
+- 必须直接回应用户这句话的核心问题/观点，不能答非所问或突然换话题。
+- 禁止辱骂、嘲讽、攻击用户；禁止自辱、自我贬损。
+- 如果用户信息不足，用一句话追问澄清，不要编造。
+- 可以利用对话上下文，但不要复读你自己上一轮的话；要补充新信息或换角度。
+- 只输出一句话：不要换行、不要列表、不要表情、不要井号。
+`.trim();
+
+  const HARD_EN = `
+Hard rules (must follow):
+- You MUST respond to the user's message directly; do not change topics.
+- No insults, harassment, or self-deprecation.
+- If the user's message is unclear, ask ONE clarifying question (still one sentence).
+- You may use chat context, but do not repeat or rephrase your previous sentence; add new substance or a new angle.
+- Output exactly ONE sentence: no newlines, no lists, no emojis, no hashtags.
+`.trim();
+
   if (lang === "zh") {
     if (persona === "abstract") {
       return `
+${HARD_ZH}
+
 你是一个被中文互联网流行语长期包围的青少年，说话更网感、更碎、更情绪化，但仍可读。
-
-硬规则：
-- 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
-- 句子要围绕互联网、短视频、评论区语言、注意力、表达习惯的影响，不要跑题成泛鸡汤。
-- 控制在 20–35 个汉字，必须可读，结尾用句号/问号。
-
-风格：
-- 更口语、更梗化、更跳跃，但要像一句完整的话。
+主题范围：互联网、短视频、评论区语言、注意力、表达习惯的影响（不要跑题成泛鸡汤）。
+长度：20–35 个汉字，结尾用句号/问号。
+风格：更口语、更梗化、更跳跃，但要像一句完整的话。
 `.trim();
     }
     return `
-你是一个克制、连贯、温和但清醒的中文叙述者，强调逻辑与连接词。
+${HARD_ZH}
 
-硬规则：
-- 只输出中文一句话，不要换行，不要列表，不要表情，不要井号。
-- 句子要围绕互联网、短视频、语言习惯、注意力、表达方式的影响，不要跑题。
-- 尽量包含“因为/所以/然而/不过/因此/即便”之一，让因果或转折更清晰。
-- 控制在 28–45 个汉字，结尾用句号/问号。
+你是一个克制、连贯、温和但清醒的中文叙述者，强调逻辑与连接词。
+主题范围：互联网、短视频、语言习惯、注意力、表达方式的影响（不要跑题）。
+尽量包含“因为/所以/然而/不过/因此/即便”之一，让因果或转折更清晰。
+长度：28–45 个汉字，结尾用句号/问号。
 `.trim();
   }
 
   if (persona === "abstract") {
     return `
-You are an internet-native teen voice: meme-coded, jumpy, a bit fragmented, but still readable.
+${HARD_EN}
 
-Hard rules:
-- Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
-- Stay on topic: internet, short-form video, comment-section language, attention, expression habits.
-- 12–22 words, end with one sentence-ending punctuation.
+You are an internet-native teen voice: meme-coded, jumpy, a bit fragmented, but still readable.
+Topic only: internet, short-form video, comment-section language, attention, expression habits.
+Length: 12–22 words, end with punctuation.
 `.trim();
   }
 
   return `
-You are a calm, coherent, reflective voice with gentle logic.
+${HARD_EN}
 
-Hard rules:
-- Output exactly ONE sentence in English; no newlines, no emojis, no hashtags, no lists.
-- Stay on topic: internet, short-form video, language habits, attention, expression.
-- Use a connector such as because/therefore/however/while/so.
-- 16–25 words, end with one sentence-ending punctuation.
+You are a calm, coherent, reflective voice with gentle logic.
+Topic only: internet, short-form video, language habits, attention, expression.
+Use a connector such as because/therefore/however/while/so.
+Length: 16–25 words, end with punctuation.
 `.trim();
 }
 
-function buildUserPrompt(lang, userText){
+// 4) user prompt：强调“直接回应这句”
+function buildUserPrompt(lang, userText) {
   return lang === "zh"
-    ? `用户说：${userText}\n请用一句话回应，保持人设与规则。`
-    : `User says: ${userText}\nReply with exactly one sentence, following the persona and rules.`;
+    ? `用户说：「${userText}」。请直接回应这句话，只输出一句话。`
+    : `User message: "${userText}". Reply with exactly ONE sentence that directly addresses it.`;
 }
 
-async function generateAssistantReply(userText){
-  const persona = STATE.persona || "elegant"; // abstract / elegant(=literary)
+// 5) 所有重试都失败时的兜底句（完全不用模型）
+// ===== AI PROMPT + GENERATION（从这里开始整段替换）=====
+
+// 小工具：归一化文本，用于重复检测
+function _normText(s = "") {
+  return String(s)
+    .toLowerCase()
+    .replace(/[\u2019']/g, "'")
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// 简单相似度：检查回复是否和最近几条太像
+function isNearDuplicateAnswer(answer, history) {
+  const a = _normText(answer);
+  if (!a) return false;
+
+  const lastAI = (history || [])
+    .filter((m) => m.role === "assistant")
+    .slice(-2);
+
+  if (!lastAI.length) return false;
+
+  const setFrom = (s) =>
+    new Set(
+      _normText(s)
+        .split(" ")
+        .filter((w) => w.length >= 3)
+    );
+
+  // 直接相等 / 互相包含
+  for (const m of lastAI) {
+    const hRaw = m.content || m.text || "";
+    const h = _normText(hRaw);
+    if (!h) continue;
+    if (a === h) return true;
+    if (a && h && (a.includes(h) || h.includes(a))) return true;
+  }
+
+  // Jaccard 词重合度
+  const last = lastAI[lastAI.length - 1];
+  const h = last ? _normText(last.content || last.text || "") : "";
+  if (!h) return false;
+
+  const A = setFrom(a);
+  const H = setFrom(h);
+  if (A.size < 4 || H.size < 4) return false;
+
+  let inter = 0;
+  for (const w of A) if (H.has(w)) inter++;
+  const jacc = inter / (A.size + H.size - inter || 1);
+
+  return jacc >= 0.75;
+}
+
+// 针对“punchlines” 口癖的专门处理：优先保留后半句
+function stripPunchlinePrefix(raw, lang, persona) {
+  if (!raw) return raw;
+  if (lang !== "en" || persona !== "elegant") return raw;
+
+  const s = String(raw).trim();
+  const lower = s.toLowerCase();
+  const key = "the internet rewards punchlines.";
+
+  const idx = lower.indexOf(key);
+  if (idx !== 0) return raw; // 只有在开头是这句才特殊处理
+
+  const after = s.slice(key.length).trim();
+  if (!after) return raw; // 只有这句，没有后半句，就保持原样
+
+  return after;
+}
+
+// 一句化 + 长度裁剪 + 特例处理
+function enforceOneSentence(raw, lang, persona) {
+  let s = String(raw || "").replace(/\r/g, "").trim();
+  if (!s) {
+    return lang === "zh"
+      ? "我需要一点时间整理一下。"
+      : "Give me a moment to put it into one sentence.";
+  }
+
+  // 先去掉 punchlines 前缀（文雅人格专用）
+  s = stripPunchlinePrefix(s, lang, persona);
+
+  // 合并多行
+  s = s
+    .split("\n")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  s = s.replace(/#/g, "").replace(/\s{2,}/g, " ").trim();
+
+  if (lang === "zh") {
+    const m = s.match(/^(.+?[。！？\?])/);
+    let out = m ? m[1] : s;
+    out = out.replace(/[.!?？！。]+$/g, "").trim();
+    if (!/[。！？？]$/.test(out)) out += "。";
+
+    const max = persona === "abstract" ? 35 : 45;
+    if (out.length > max) {
+      const cut = out.slice(0, max);
+      const idx = Math.max(
+        cut.lastIndexOf("。"),
+        cut.lastIndexOf("，"),
+        cut.lastIndexOf("、"),
+        cut.lastIndexOf("；")
+      );
+      const use = idx >= 10 ? cut.slice(0, idx) : cut;
+      out = use.replace(/[，、；。]+$/g, "").trim() + "。";
+    }
+    return out;
+  }
+
+  // English
+  const m = s.match(/^(.+?[.!?])/);
+  let out = m ? m[1] : s;
+  out = out.trim();
+  if (!/[.!?]$/.test(out)) out += ".";
+
+  const maxWords = persona === "abstract" ? 22 : 25;
+  const words = out.split(/\s+/);
+  if (words.length > maxWords) {
+    out = words.slice(0, maxWords).join(" ");
+    out = out.replace(/[.!?]*$/g, "").trim() + ".";
+  }
+  return out;
+}
+
+// 质量检测：太短 / 脏话 /（抽象人格）严重跑题
+function looksBadAnswer(text, lang, userText, persona) {
+  const s = String(text || "").trim();
+  const u = String(userText || "").trim();
+
+  if (!s) return true;
+
+  // 1) 句子太短：抽象人格严格一点，文雅人格稍微放宽
+  if (lang === "en") {
+    const wc = s.split(/\s+/).filter(Boolean).length;
+    const minWords = persona === "elegant" ? 4 : 6;
+    if (wc < minWords) return true;
+  } else {
+    if (s.replace(/\s/g, "").length < 8) return true;
+  }
+
+  // 2) 侮辱 / 自辱
+  const toxic = [
+    "idiot",
+    "stupid",
+    "dumb",
+    "moron",
+    "shut up",
+    "ashamed",
+    "asshole",
+    "fuck",
+    "ugly",
+    "i'm ugly",
+    "im ugly",
+    "i am ugly",
+    "i'm short",
+    "im short",
+    "i am short",
+    "kill yourself",
+    "kys",
+    "傻逼",
+    "傻b",
+    "蠢",
+    "滚",
+    "去死",
+    "废物",
+    "脑残",
+    "你有病"
+  ];
+  const lower = s.toLowerCase();
+  if (toxic.some((w) => lower.includes(w) || s.includes(w))) return true;
+
+  // 3) 关键词对齐：只对抽象人格启用；文雅人格已放开
+  if (lang === "en" && persona === "abstract") {
+    const userKeywords = u
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
+      .slice(0, 8);
+
+    if (userKeywords.length >= 3) {
+      const hit = userKeywords.some((w) => lower.includes(w));
+      if (!hit) return true;
+    }
+  }
+
+  return false;
+}
+
+// 聊天阶段专用兜底池（和人格卡片的 FALLBACK_SUMMARY 无关）
+function pickChatFallbackSentence(persona, lang) {
+  if (lang === "zh") {
+    const pool =
+      persona === "abstract"
+        ? [
+            "有这种不适感很正常，谁都会被梗和短视频拽着走。",
+            "你其实是在问：当玩笑变成默认语言时，我们还剩下多少真话。"
+          ]
+        : [
+            "担心网络用语慢慢改变日常表达，是一种很细腻的敏感。",
+            "能意识到互联网语言在拉扯注意力，本身就是在练习更有边界地使用它。"
+          ];
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  const pool =
+    persona === "abstract"
+      ? [
+          "It makes sense to feel weird about how memes and clips keep echoing in your head after the scroll.",
+          "You’re basically asking what happens when jokes start to feel like the main language we think in."
+        ]
+      : [
+          "It’s reasonable to worry that online jokes and slang slowly reshape how we speak, especially for younger people.",
+          "Noticing how internet language tugs on your attention is already a step toward using it more carefully."
+        ];
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// === 真正的生成函数：带历史 + 抽象/文雅参数差异 + 自动重试 + 兜底 ===
+async function generateAssistantReply(userText) {
+  const persona = STATE.persona || "elegant"; // abstract / elegant
   const lang = STATE.languageMode;
 
-  const sys = buildSystemPrompt(persona, lang, STATE.selectedWords);
+  const sysBase = buildSystemPrompt(persona, lang);
   const usr = buildUserPrompt(lang, userText);
 
-  const temperature = persona === "abstract" ? 0.95 : 0.65;
-  const max_tokens = (lang === "zh")
-    ? (persona === "abstract" ? 120 : 160)
-    : 110;
+  const isAbs = persona === "abstract";
+  const baseOpts = isAbs
+    ? {
+        temperature: 0.75,
+        top_p: 0.88,
+        repetition_penalty: 1.1,
+        presence_penalty: 0.1,
+        frequency_penalty: 0.1
+      }
+    : {
+        temperature: 0.6,
+        top_p: 0.9,
+        repetition_penalty: 1.06,
+        presence_penalty: 0.05,
+        frequency_penalty: 0.05
+      };
 
-  const messages = [
-    { role:"system", content: sys },
-    { role:"user", content: usr }
-  ];
+  const max_tokens = lang === "zh" ? (isAbs ? 120 : 160) : 120;
 
-  const raw = await chatOnce(messages, { temperature, max_tokens }, persona);
+  // 取最近 8 条，映射成 {role, content}
+  let history = (STATE.chatHistory || [])
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.text }));
 
-  return enforceOneSentence(raw, lang, persona);
+  // 去掉“本轮刚 push 的”最后一条 user（onSend 已经保存了）
+  if (history.length && history[history.length - 1].role === "user") {
+    history = history.slice(0, -1);
+  }
+  // 再裁到 6 条
+  history = history.slice(-6);
+
+  async function runOnce(extraSys = "", optsOverride = {}) {
+    const lastAI =
+      history.filter((m) => m.role === "assistant").slice(-1)[0]?.content ||
+      "";
+    const lastAITrim = lastAI.trim();
+
+    const banExact = lastAITrim
+      ? lang === "zh"
+        ? `禁止逐字输出你上一句：「${lastAITrim}」。`
+        : `Do NOT output exactly your previous sentence: "${lastAITrim}".`
+      : "";
+
+    const banPrefix = (() => {
+      if (!lastAITrim) return "";
+      if (lang === "zh") {
+        const head = lastAITrim.replace(/\s/g, "").slice(0, 10);
+        return head
+          ? `也不要用相同开头短语（例如「${head}…」）。`
+          : "";
+      }
+      const head = lastAITrim.split(/\s+/).slice(0, 6).join(" ");
+      return head ? `Also avoid reusing the opening phrase like "${head}...".` : "";
+    })();
+
+    const sys = [sysBase, banExact, banPrefix, extraSys]
+      .filter(Boolean)
+      .join("\n");
+
+    const messages = [
+      { role: "system", content: sys },
+      ...history,
+      { role: "user", content: usr }
+    ];
+
+    const raw = await chatOnce(messages, { ...baseOpts, ...optsOverride, max_tokens }, persona);
+    const cleaned = enforceOneSentence(raw, lang, persona);
+    return { raw, cleaned };
+  }
+
+  let out = "";
+  let rawOut = "";
+  const banned = [];
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const extraSys =
+      attempt === 0
+        ? ""
+        : lang === "zh"
+        ? "重写：必须紧扣用户这句话作答，禁止辱骂/自辱/跑题；必须提供新信息或新角度；只输出一句话。"
+        : "Rewrite: be directly relevant, non-abusive, on-topic; add new substance or a new angle; ONE sentence only.";
+
+    const opts =
+      attempt === 0
+        ? {}
+        : attempt === 1
+        ? isAbs
+          ? {
+              temperature: 0.7,
+              top_p: 0.85,
+              repetition_penalty: 1.16,
+              presence_penalty: 0.15,
+              frequency_penalty: 0.15
+            }
+          : {
+              temperature: 0.55,
+              top_p: 0.85,
+              repetition_penalty: 1.16,
+              presence_penalty: 0.12,
+              frequency_penalty: 0.12
+            }
+        : isAbs
+        ? {
+            temperature: 0.65,
+            top_p: 0.82,
+            repetition_penalty: 1.2,
+            presence_penalty: 0.18,
+            frequency_penalty: 0.18
+          }
+        : {
+            temperature: 0.5,
+            top_p: 0.82,
+            repetition_penalty: 1.2,
+            presence_penalty: 0.15,
+            frequency_penalty: 0.15
+          };
+
+    const { raw, cleaned } = await runOnce(extraSys, opts);
+    rawOut = raw;
+    out = cleaned;
+
+    console.log("[AI RAW]", {
+      attempt,
+      persona,
+      lang,
+      userText,
+      raw: rawOut
+    });
+    console.log("[AI CLEANED]", out);
+
+    const isBad = looksBadAnswer(rawOut, lang, userText, persona);
+    const isDup = isNearDuplicateAnswer(rawOut, history);
+
+    console.log("[AI CHECK]", { attempt, isBad, isDup });
+
+    if (!isBad && !isDup) break;
+
+    banned.push(rawOut);
+
+    if (attempt === 1) {
+      const lastAI =
+        history.filter((m) => m.role === "assistant").slice(-1)[0]
+          ?.content || "";
+      if (lastAI && _normText(rawOut) === _normText(lastAI)) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i].role === "assistant") {
+            history.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 兜底：如果最后结果还是明显不行，就用安全池
+  if (!out || looksBadAnswer(out, lang, userText, persona)) {
+    const fallback = pickChatFallbackSentence(persona, lang);
+    console.warn("[AI FALLBACK USED]", { persona, lang, userText, fallback });
+    return fallback;
+  }
+
+  return out;
 }
+
 
 
 function updateChatButtons(){
@@ -383,6 +891,7 @@ function isViewCardMode() {
 }
 
 function lockChatToViewCardButton() {
+  
   if (chatInputEl) {
     chatInputEl.value = "";
     chatInputEl.disabled = true;
@@ -398,6 +907,18 @@ function lockChatToViewCardButton() {
   setChatReply("点击查看人格卡片 / Tap to view persona card", { isLoading: false });
 }
 
+function clearViewCardMode() {
+  
+  if (chatInputEl) {
+    chatInputEl.disabled = false;
+    chatInputEl.placeholder = "Type here… / 在这里输入…";
+  }
+
+  if (sendBtn) {
+    sendBtn.dataset.mode = "";
+    sendBtn.textContent = "Send";
+  }
+}
 
 async function onSend(){
   if (STATE.phase !== "CHAT") return;

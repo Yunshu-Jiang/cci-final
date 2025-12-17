@@ -24,6 +24,8 @@ build/
 # Training outputs / datasets (keep scripts, ignore artifacts)
 train/lora_out/
 train/merged_hf/
+public/training_model/merged_abstract/
+public/training_model/merged_literary/
 
 # Big local model assets (DO NOT COMMIT)
 public/models/Persona-Qwen2.5-1.5B-FT-q4f16_1-MLC-v2/
