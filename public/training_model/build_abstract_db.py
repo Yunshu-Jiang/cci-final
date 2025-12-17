@@ -1,4 +1,3 @@
-# build_abstract_db.py
 import argparse, json, random
 from pathlib import Path
 from datasets import load_dataset
@@ -73,9 +72,6 @@ def main():
     random.seed(args.seed)
     random.shuffle(sarcasm)
     random.shuffle(persona)
-
-    # Mix: keep sarcasm limited so it doesn't overwhelm dialog skills
-    # total = persona_count + sarcasm_count_target
     persona_count = len(persona)
     sarcasm_target = int(persona_count * args.sarcasm_ratio / (1 - args.sarcasm_ratio))
     sarcasm_target = min(sarcasm_target, len(sarcasm))

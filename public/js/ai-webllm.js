@@ -1,27 +1,19 @@
-// public/js/ai-webllm.js
 import * as webllm from "../lib/web-llm/index.js";
 
-// 复用官方 wasm model_lib（避免自己编 wasm）
 const BASE_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
-
-// 你自己的两个模型 ID（唯一即可）
 const MODEL_ID_ABSTRACT = "QwenNPC-Abstract-q4f16_1-MLC";
 const MODEL_ID_LITERARY = "QwenNPC-Literary-q4f16_1-MLC";
-
-// 关键：你现在 R2 目录是 /resolve/main/<同名目录>/ 这一层
 const REMOTE_MODEL_ABSTRACT =
   "https://pub-8ec30651c6f941b78efffd6f0f5181b0.r2.dev/QwenNPC-Abstract-q4f16_1-MLC/resolve/main/QwenNPC-Abstract-q4f16_1-MLC/";
 
 const REMOTE_MODEL_LITERARY =
   "https://pub-8ec30651c6f941b78efffd6f0f5181b0.r2.dev/QwenNPC-Literary-q4f16_1-MLC/resolve/main/QwenNPC-Literary-q4f16_1-MLC/";
 
-// 允许外部用 persona 选择模型（先铺好能力，后面 app.js 再接）
+
 function pickModel(persona) {
-  // persona 兼容：abstract / literary / elegant
   if (persona === "abstract") {
     return { modelId: MODEL_ID_ABSTRACT, modelUrl: REMOTE_MODEL_ABSTRACT };
   }
-  // 你 app.js 里用的是 elegant（映射到 literary）
   return { modelId: MODEL_ID_LITERARY, modelUrl: REMOTE_MODEL_LITERARY };
 }
 
@@ -39,13 +31,8 @@ function getBaseRecord() {
   return rec;
 }
 
-// 多引擎：按 persona 缓存
 const engineMap = new Map();
 
-/**
- * 兼容老调用：ensureAI() 默认走 literary（你也可以改成 abstract）
- * 新调用：ensureAI("abstract") / ensureAI("literary") / ensureAI("elegant")
- */
 export async function ensureAI(persona = "literary") {
   const { modelId, modelUrl } = pickModel(persona);
 
@@ -63,7 +50,6 @@ export async function ensureAI(persona = "literary") {
   const base = getBaseRecord();
   const initProgressCallback = (p) => console.log(`[WebLLM:${modelId}]`, p.text);
 
-  // 把两个模型都注册进去，后续想创建哪个都行
   const appConfig = {
     model_list: [
       {
@@ -91,10 +77,6 @@ export async function ensureAI(persona = "literary") {
   return engine;
 }
 
-/**
- * 兼容老调用：chatOnce(messages, opts) 默认 literary
- * 新调用：chatOnce(messages, opts, "abstract")
- */
 export async function chatOnce(messages, opts = {}, persona = "literary") {
   const engine = await ensureAI(persona);
 
@@ -109,7 +91,6 @@ export async function chatOnce(messages, opts = {}, persona = "literary") {
     stop: opts.stop,
   };
 
-  // 删掉 undefined，避免某些版本严格校验
   Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
 
   try {
@@ -117,7 +98,6 @@ export async function chatOnce(messages, opts = {}, persona = "literary") {
     const text = result?.choices?.[0]?.message?.content || "";
     return text.trim();
   } catch (e) {
-    // 降级重试：移除可能不支持的字段
     const fallback = { ...payload };
     delete fallback.top_p;
     delete fallback.repetition_penalty;
@@ -131,5 +111,4 @@ export async function chatOnce(messages, opts = {}, persona = "literary") {
   }
 }
 
-// 给调试用：window.AI.ensureAI("abstract") / AI.chatOnce(..., {}, "abstract")
 window.AI = { ensureAI, chatOnce };

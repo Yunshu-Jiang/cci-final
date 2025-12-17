@@ -16,19 +16,15 @@ def merge_one(base_id: str, lora_dir: str, out_dir: str, dtype: str, device: str
     print(f"[merge] dtype={dtype} device={device}")
 
     tok = AutoTokenizer.from_pretrained(base_id, use_fast=True, trust_remote_code=True)
-
-    # 在 CPU 上 merge 最稳（显存不够也能做），就是慢一点
     base = AutoModelForCausalLM.from_pretrained(
         base_id,
         torch_dtype=torch_dtype,
-        device_map=device,  # "cpu" 或 "auto"
+        device_map=device,
         trust_remote_code=True,
     )
 
     model = PeftModel.from_pretrained(base, lora_dir)
     model = model.merge_and_unload()
-
-    # 建议 safe_serialization=True (safetensors)；如果你遇到兼容性问题再改 False
     model.save_pretrained(out_dir, safe_serialization=True)
     tok.save_pretrained(out_dir)
     print("[ok] merged ->", out_dir)

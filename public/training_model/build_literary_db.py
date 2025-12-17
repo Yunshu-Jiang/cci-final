@@ -1,4 +1,3 @@
-# build_literary_db.py
 import argparse, json, random
 from pathlib import Path
 from datasets import load_dataset
@@ -27,11 +26,8 @@ BRIDGES = [
 ]
 
 def make_reflective_reply(parent: str, original: str, rng: random.Random) -> str:
-    # We do NOT quote the whole original comment verbatim to avoid turning into a pure sarcasm model.
-    # We keep it “inspired by” the vibe and steer into reflection.
     t = rng.choice(REFLECTION_TEMPLATES)
     bridge = rng.choice(BRIDGES)
-    # Small hint of context without copying the sarcasm line
     context_hint = ""
     if len(parent) > 0:
         context_hint = " Given what you said, "

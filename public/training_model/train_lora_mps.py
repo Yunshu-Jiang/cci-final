@@ -1,4 +1,3 @@
-# public/training_model/train_lora_mps.py
 import os
 import torch
 from datasets import load_dataset
@@ -37,8 +36,6 @@ def main():
 
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
-
-    # LoRA
     lora_config = LoraConfig(
         r=16,
         lora_alpha=32,
@@ -51,7 +48,6 @@ def main():
 
     ds = load_dataset("json", data_files=TRAIN_FILE, split="train")
 
-    # 我们在这里把 messages -> text -> tokenize
     def preprocess(ex):
         text = messages_to_text(ex, tokenizer)
         toks = tokenizer(
@@ -60,13 +56,11 @@ def main():
             max_length=MAX_SEQ_LEN,
             padding=False,
         )
-        # causal LM labels = input_ids
         toks["labels"] = toks["input_ids"].copy()
         return toks
 
     ds = ds.map(preprocess, remove_columns=ds.column_names)
 
-    # collator：动态 padding
     collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
     training_args = TrainingArguments(

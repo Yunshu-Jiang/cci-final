@@ -14,15 +14,10 @@ def extract_dialog_turns(text: str):
 
     t = text.strip()
 
-    # 跳过 persona-only 行
     if PERSONA_RE.search(t) and ("\t" not in t and "|" not in t):
         return []
-
-    # 必须包含对话分隔符
     if "\t" not in t and "|" not in t:
         return []
-
-    # 去掉开头的数字编号（如 "8 "）
     t = re.sub(r"^\d+\s*", "", t)
 
     parts = [p.strip() for p in DIALOG_SPLIT_RE.split(t) if p.strip()]

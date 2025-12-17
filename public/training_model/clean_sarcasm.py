@@ -1,4 +1,3 @@
-# clean_sarcasm_csv.py
 import argparse
 import json
 import re
@@ -21,14 +20,13 @@ def clean_text(s: str) -> str:
 
     s = HTML_RE.sub(" ", s)
     s = URL_RE.sub("", s)
-    s = MD_CODE_RE.sub(" ", s)     # remove inline/code blocks
-    s = MD_QUOTE_RE.sub(" ", s)    # remove quoted blocks
+    s = MD_CODE_RE.sub(" ", s) 
+    s = MD_QUOTE_RE.sub(" ", s)
 
     s = WS_RE.sub(" ", s).strip()
     return s
 
 def english_ratio(s: str) -> float:
-    # rough heuristic: proportion of ASCII letters among all alphabetic chars
     letters = [c for c in s if c.isalpha()]
     if not letters:
         return 0.0
@@ -77,24 +75,16 @@ def main():
 
             parent = clean_text(str(row["parent_comment"]) if pd.notna(row["parent_comment"]) else "")
             comment = clean_text(str(row["comment"]) if pd.notna(row["comment"]) else "")
-
-            # drop deleted/removed/empty
             if parent.lower() in DELETED_MARKERS or comment.lower() in DELETED_MARKERS:
                 continue
-
-            # length filters
             if not (args.min_len <= len(parent) <= args.max_len):
                 continue
             if not (args.min_len <= len(comment) <= args.max_len):
                 continue
-
-            # English heuristic
             if english_ratio(parent) < args.min_english_ratio:
                 continue
             if english_ratio(comment) < args.min_english_ratio:
                 continue
-
-            # optional dedup
             if args.dedup:
                 key = (parent, comment)
                 if key in seen:
@@ -107,7 +97,6 @@ def main():
                         "label": label,
                         "parent_comment": parent,
                         "comment": comment,
-                        # 可选保留一些“安全无隐私”的上下文信息
                         "subreddit": str(row.get("subreddit", "")) if pd.notna(row.get("subreddit", "")) else "",
                         "score": int(row.get("score", 0)) if pd.notna(row.get("score", 0)) else 0,
                     },

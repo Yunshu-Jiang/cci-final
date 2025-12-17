@@ -31,7 +31,6 @@ filter:drop-shadow(0 12px 40px rgba(0,0,0,.6));
 transform-origin:50% 100%;
 }
 
-/* 左上角 Reset */
 .ui{
 position:absolute; top:12px; left:12px; z-index:6;
 display:flex; gap:8px; flex-wrap:wrap; align-items:center;
@@ -52,7 +51,6 @@ padding:8px 12px; cursor:pointer; user-select:none; border-radius:12px;
 .ui .btn:hover{ opacity:.9; }
 .ui .btn:active{ transform: translateY(1px); }
 
-/* 顶部阶段标题（灰泡改透明：保留文字样式） */
 .phase-header{
 position:absolute;
 top:16px; left:50%;
@@ -78,7 +76,6 @@ text-shadow:0 1px 2px rgba(0,0,0,.35);
 .phase-title .sub{ display:block; font-weight:600; opacity:.95; font-size:0.95em; }
 .phase-title .hint{ display:block; font-weight:600; opacity:.9; font-size:0.9em; margin-top:2px; }
 
-/* 词语云 */
 .cloud{ position:absolute; inset:0; z-index:4; pointer-events:none; }
 .tag{
 position:absolute;
@@ -105,7 +102,6 @@ text-shadow:0 2px 10px rgba(0,0,0,.45);
 opacity: .98;
 }
 
-/* 选词槽（顶部） */
 .selected-bar{
 position:absolute;
 left:50%;
@@ -151,7 +147,6 @@ font-size:12px;
 line-height:1;
 }
 
-/* FEEDING 底部：白色气泡 */
 .reply{
 position:absolute;
 left:50%;
@@ -197,7 +192,6 @@ display:none;
 .reply.loading .spinner{ display:block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* 白泡里词语 chips */
 .bubble-chips{
 display:flex;
 flex-wrap:wrap;
@@ -236,7 +230,6 @@ opacity:.85;
 font-weight:700;
 }
 
-/* CHAT UI（阶段二）：AI 回复泡 + 输入框 */
 .chat-ui{
 position:absolute;
 left:50%;
@@ -268,7 +261,6 @@ word-break:break-word;
 display:none;
 }
 
-/* CHAT 输入条 */
 .chat-bar{
 width:100%;
 display:flex;
@@ -301,7 +293,6 @@ backdrop-filter: blur(6px);
 }
 .chat-bar button:disabled{ opacity:.5; cursor:not-allowed; }
 
-/* History 抽屉 */
 .drawer{
 position:absolute;
 inset:0;
@@ -358,7 +349,6 @@ white-space:pre-wrap;
 .msg.user{ background: rgba(255,138,0,.10); border-color: rgba(255,138,0,.22); }
 .msg.assistant{ background: rgba(130,170,255,.08); border-color: rgba(130,170,255,.20); }
 
-/* RESULT 档案卡 */
 .modal{
 position:absolute;
 inset:0;
@@ -397,7 +387,6 @@ cursor:pointer;
 .card .actions .primary{ background:#111; color:#fff; }
 .card .actions .ghost{ background: rgba(0,0,0,.08); color:#111; }
 
-/* ✅ 模型加载提示：更窄一点的小弹窗 */
 .modal.model-hint .card{
 width:min(420px, 90vw);
 text-align:left;
@@ -406,10 +395,8 @@ text-align:left;
 font-size:16px;
 }
 
-/* 变身闪光层 */
 .flash{ position:absolute; inset:0; background:rgba(255,255,255,0); z-index:2; pointer-events:none; }
 
-/* phase 显隐控制 */
 .wrap[data-phase="FEEDING"] .selected-bar{ display:flex; }
 .wrap[data-phase="FEEDING"] #cloud{ display:block; }
 .wrap[data-phase="FEEDING"] .reply{ display:flex; pointer-events:auto; }
@@ -439,25 +426,19 @@ font-size:16px;
     <button class="btn" id="reset-btn">Reset</button>
   </div>
 
-  <!-- 顶部阶段标题 -->
   <div class="phase-header">
     <div class="phase-title" id="phase-title"></div>
   </div>
 
-  <!-- FEEDING：已选词槽 -->
   <div class="selected-bar" id="selected-bar" aria-label="selected-words">
     <div class="counter" id="selected-counter">0/5</div>
     <div id="selected-list" style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;"></div>
   </div>
 
-  <!-- 词语云 -->
   <div id="cloud" class="cloud" aria-label="word-cloud"></div>
 
-  <!-- CHAT UI（阶段二） -->
   <div id="chat-ui" class="chat-ui">
-    <!-- AI 回复泡 -->
     <div id="chat-reply" class="chat-reply" aria-live="polite"></div>
-
     <div id="chat-bar" class="chat-bar">
       <input id="chat-input" class="chat-input" placeholder="输入你想说的话 / Type your message" />
       <button id="send-btn" class="chat-btn">发送 / Send</button>
@@ -465,8 +446,6 @@ font-size:16px;
       <button id="end-btn" class="chat-btn">结束 / End</button>
     </div>
   </div>
-
-  <!-- FEEDING：底部白色气泡 -->
   <div class="reply" id="reply">
     <div class="reply-inner">
       <div style="display:flex; align-items:center; gap:10px;">
@@ -476,8 +455,6 @@ font-size:16px;
       <div class="reply-text" id="reply-text">点击词语开始投喂 / Click words to feed</div>
     </div>
   </div>
-
-  <!-- History Drawer -->
   <div class="drawer" id="history-drawer" aria-label="history">
     <div class="backdrop" id="history-backdrop"></div>
     <div class="panel">
@@ -488,8 +465,6 @@ font-size:16px;
       <div class="history-list" id="history-list"></div>
     </div>
   </div>
-
-  <!-- RESULT Modal -->
   <div class="modal" id="result-modal" aria-label="result">
     <div class="backdrop" id="result-backdrop"></div>
     <div class="card">
@@ -502,8 +477,6 @@ font-size:16px;
       </div>
     </div>
   </div>
-
-  <!-- ✅ 模型加载提示弹窗（首次打开时提示“模型加载中”） -->
   <div class="modal model-hint" id="model-hint" aria-label="model-hint">
     <div class="backdrop" id="model-hint-backdrop"></div>
     <div class="card">

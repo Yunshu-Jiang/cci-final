@@ -49,7 +49,6 @@ def write_jsonl(path: Path, rows):
 
 def add_system(row, system_text):
     msgs = row["messages"]
-    # if already has system, replace it; else prepend
     if msgs and msgs[0].get("role") == "system":
         msgs = [{"role":"system","content":system_text}] + msgs[1:]
     else:
@@ -63,14 +62,10 @@ def main():
     ap.add_argument("--out_abstract", default="public/training_model/data/train_abstract.jsonl")
     ap.add_argument("--out_literary", default="public/training_model/data/train_literary.jsonl")
     ap.add_argument("--seed", type=int, default=42)
-
-    # 控制规模
     ap.add_argument("--abstract_total", type=int, default=12000)
     ap.add_argument("--literary_total", type=int, default=12000)
-
-    # 比例
-    ap.add_argument("--abstract_sarcasm_ratio", type=float, default=0.35)  # abstract 更需要 sarcasm
-    ap.add_argument("--literary_reflect_ratio", type=float, default=0.25)  # literary 用一部分反思合成
+    ap.add_argument("--abstract_sarcasm_ratio", type=float, default=0.35)
+    ap.add_argument("--literary_reflect_ratio", type=float, default=0.25)
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -81,18 +76,15 @@ def main():
     rng.shuffle(sarcasm)
     rng.shuffle(pc)
 
-    # ----- ABSTRACT -----
+    # ABSTRACT
     abs_total = args.abstract_total
     abs_sar_n = int(abs_total * args.abstract_sarcasm_ratio)
     abs_pc_n = abs_total - abs_sar_n
 
     abs_rows = []
 
-    # personachat_dialog -> abstract system
     for row in pc[:abs_pc_n]:
         abs_rows.append(add_system(row, ABSTRACT_SYSTEM))
-
-    # sarcasm_clean -> abstract system (parent_comment -> comment)
     for obj in sarcasm[:abs_sar_n]:
         p = (obj.get("parent_comment") or "").strip()
         c = (obj.get("comment") or "").strip()
@@ -110,17 +102,15 @@ def main():
     rng.shuffle(abs_rows)
     abs_rows = abs_rows[:abs_total]
 
-    # ----- LITERARY -----
+    # LITERARY
     lit_total = args.literary_total
     lit_ref_n = int(lit_total * args.literary_reflect_ratio)
     lit_pc_n = lit_total - lit_ref_n
 
     lit_rows = []
-    # personachat_dialog -> literary system
     for row in pc[:lit_pc_n]:
         lit_rows.append(add_system(row, LITERARY_SYSTEM))
 
-    # sarcasm_clean -> reflective synthetic replies
     def reflective_reply():
         return f"{rng.choice(REFLECTION_OPENERS)} {rng.choice(REFLECTION_FOLLOWUPS)}"
 

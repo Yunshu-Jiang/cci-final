@@ -300,122 +300,17 @@ function renderHistoryList(){
   historyList.scrollTop = historyList.scrollHeight;
 }
 
-// ===== AI PROMPT + GENERATION (drop-in replacement) =====
+// AI PROMPT + GENERATION
 
-// ===== AI PROMPT + GENERATION (drop-in replacement) =====
-
-// 0) 一些小工具 + 硬禁止短句
+// Hard rules
 
 const HARD_BAN_PHRASES_EN = [
   "the internet rewards punchlines.",
   "the internet rewards punchlines"
 ];
 
-// function _normText(s = "") {
-//   return String(s).toLowerCase().replace(/\s+/g, " ").trim();
-// }
+// Prompt
 
-// // 1) 简单“坏输出”检测：辱骂/自辱/太短/半句/跑题/硬禁止句
-// // 一些轻量的“坏输出”检测：辱骂/自辱/明显半句/太短/明显跑题
-// // 现在多了 persona 参数：abstract 严一点，elegant 放宽关键词对齐
-// function looksBadAnswer(text, lang, userText, persona = "abstract") {
-//   const s = String(text || "").trim();
-//   const u = String(userText || "").trim();
-
-//   if (!s) return true;
-
-//   // 太短：像口癖/敷衍（英文 < 6 词；中文 < 8 字）
-//   if (lang === "en") {
-//     const wc = s.split(/\s+/).filter(Boolean).length;
-//     if (wc < 6) return true;
-//   } else {
-//     if (s.replace(/\s/g, "").length < 8) return true;
-//   }
-
-//   // 明显半句/截断感
-//   if (/[,:;—]\s*$/.test(s)) return true;
-//   if (/\b(what if you|what if i|and then|because i)\b/i.test(s) && !/[.!?]$/.test(s)) {
-//     return true;
-//   }
-
-//   // 侮辱/攻击/自辱（简化词表）
-//   const toxic = [
-//     "idiot", "stupid", "dumb", "moron", "shut up", "ashamed", "asshole", "fuck",
-//     "ugly", "i'm ugly", "im ugly", "i am ugly",
-//     "i'm short", "im short", "i am short",
-//     "kill yourself", "kys",
-//     "傻逼", "傻b", "蠢", "滚", "去死", "废物", "脑残", "你有病"
-//   ];
-//   const lower = s.toLowerCase();
-//   if (toxic.some(w => lower.includes(w) || s.includes(w))) return true;
-
-//   // 显式 ban 掉“只有这一句 punchlines”的情况（抽象/文雅都适用）
-//   if (lang === "en") {
-//     const lp = lower.trim();
-//     if (lp === "the internet rewards punchlines.") {
-//       return true;
-//     }
-//   }
-
-//   // ===== 关键词对齐：现在只对 abstract 开启，elegant 不再强制 =====
-//   if (lang === "en" && persona === "abstract") {
-//     const userKeywords = u
-//       .toLowerCase()
-//       .replace(/[^a-z0-9\s]/g, " ")
-//       .split(/\s+/)
-//       .filter(w => w.length >= 4)   // 去掉太短词
-//       .slice(0, 8);                 // 不要太多
-
-//     if (userKeywords.length >= 3) {
-//       const hit = userKeywords.some(w => lower.includes(w));
-//       if (!hit) return true;        // 抽象 persona 下，完全不对齐就视为“跑题”
-//     }
-//   }
-
-//   return false;
-// }
-
-
-// // 2) 判断是否和最近两条 AI 输出“几乎一样”
-// function isNearDuplicateAnswer(answer, history) {
-//   const a = _normText(answer);
-//   if (!a) return false;
-
-//   const lastAI = (history || []).filter(m => m.role === "assistant").slice(-2);
-//   if (!lastAI.length) return false;
-
-//   const norm = (s) =>
-//     _normText((s && s.content) || s && s.text || s || "");
-
-//   const na = a;
-
-//   for (const m of lastAI) {
-//     const nh = norm(m);
-//     if (!nh) continue;
-//     if (na === nh) return true;
-//     if (na.length && nh.length && (na.includes(nh) || nh.includes(na))) {
-//       return true;
-//     }
-//   }
-
-//   // Jaccard 词重合度（英文更有效）
-//   const last = lastAI[lastAI.length - 1];
-//   const h = norm(last);
-//   if (h && na) {
-//     const A = new Set(na.split(" ").filter(w => w.length >= 3));
-//     const H = new Set(h.split(" ").filter(w => w.length >= 3));
-//     if (A.size >= 6 && H.size >= 6) {
-//       let inter = 0;
-//       for (const w of A) if (H.has(w)) inter++;
-//       const jacc = inter / (A.size + H.size - inter);
-//       if (jacc >= 0.7) return true;
-//     }
-//   }
-
-//   return false;
-// }
-
-// 3) system prompt：加“必须回应/禁止辱骂自辱/不清楚就追问/不复读”
 function buildSystemPrompt(persona, lang) {
   const HARD_ZH = `
 硬规则（必须遵守）：
@@ -476,17 +371,14 @@ Length: 16–25 words, end with punctuation.
 `.trim();
 }
 
-// 4) user prompt：强调“直接回应这句”
+// User Prompt
 function buildUserPrompt(lang, userText) {
   return lang === "zh"
     ? `用户说：「${userText}」。请直接回应这句话，只输出一句话。`
     : `User message: "${userText}". Reply with exactly ONE sentence that directly addresses it.`;
 }
 
-// 5) 所有重试都失败时的兜底句（完全不用模型）
-// ===== AI PROMPT + GENERATION（从这里开始整段替换）=====
-
-// 小工具：归一化文本，用于重复检测
+// Avoid repeat
 function _normText(s = "") {
   return String(s)
     .toLowerCase()
@@ -496,7 +388,6 @@ function _normText(s = "") {
     .trim();
 }
 
-// 简单相似度：检查回复是否和最近几条太像
 function isNearDuplicateAnswer(answer, history) {
   const a = _normText(answer);
   if (!a) return false;
@@ -514,7 +405,6 @@ function isNearDuplicateAnswer(answer, history) {
         .filter((w) => w.length >= 3)
     );
 
-  // 直接相等 / 互相包含
   for (const m of lastAI) {
     const hRaw = m.content || m.text || "";
     const h = _normText(hRaw);
@@ -523,7 +413,6 @@ function isNearDuplicateAnswer(answer, history) {
     if (a && h && (a.includes(h) || h.includes(a))) return true;
   }
 
-  // Jaccard 词重合度
   const last = lastAI[lastAI.length - 1];
   const h = last ? _normText(last.content || last.text || "") : "";
   if (!h) return false;
@@ -539,7 +428,7 @@ function isNearDuplicateAnswer(answer, history) {
   return jacc >= 0.75;
 }
 
-// 针对“punchlines” 口癖的专门处理：优先保留后半句
+// Deal with the punchline
 function stripPunchlinePrefix(raw, lang, persona) {
   if (!raw) return raw;
   if (lang !== "en" || persona !== "elegant") return raw;
@@ -549,15 +438,14 @@ function stripPunchlinePrefix(raw, lang, persona) {
   const key = "the internet rewards punchlines.";
 
   const idx = lower.indexOf(key);
-  if (idx !== 0) return raw; // 只有在开头是这句才特殊处理
+  if (idx !== 0) return raw;
 
   const after = s.slice(key.length).trim();
-  if (!after) return raw; // 只有这句，没有后半句，就保持原样
+  if (!after) return raw;
 
   return after;
 }
 
-// 一句化 + 长度裁剪 + 特例处理
 function enforceOneSentence(raw, lang, persona) {
   let s = String(raw || "").replace(/\r/g, "").trim();
   if (!s) {
@@ -566,10 +454,8 @@ function enforceOneSentence(raw, lang, persona) {
       : "Give me a moment to put it into one sentence.";
   }
 
-  // 先去掉 punchlines 前缀（文雅人格专用）
   s = stripPunchlinePrefix(s, lang, persona);
 
-  // 合并多行
   s = s
     .split("\n")
     .map((x) => x.trim())
@@ -599,7 +485,6 @@ function enforceOneSentence(raw, lang, persona) {
     return out;
   }
 
-  // English
   const m = s.match(/^(.+?[.!?])/);
   let out = m ? m[1] : s;
   out = out.trim();
@@ -614,14 +499,12 @@ function enforceOneSentence(raw, lang, persona) {
   return out;
 }
 
-// 质量检测：太短 / 脏话 /（抽象人格）严重跑题
 function looksBadAnswer(text, lang, userText, persona) {
   const s = String(text || "").trim();
   const u = String(userText || "").trim();
 
   if (!s) return true;
 
-  // 1) 句子太短：抽象人格严格一点，文雅人格稍微放宽
   if (lang === "en") {
     const wc = s.split(/\s+/).filter(Boolean).length;
     const minWords = persona === "elegant" ? 4 : 6;
@@ -630,7 +513,6 @@ function looksBadAnswer(text, lang, userText, persona) {
     if (s.replace(/\s/g, "").length < 8) return true;
   }
 
-  // 2) 侮辱 / 自辱
   const toxic = [
     "idiot",
     "stupid",
@@ -661,7 +543,6 @@ function looksBadAnswer(text, lang, userText, persona) {
   const lower = s.toLowerCase();
   if (toxic.some((w) => lower.includes(w) || s.includes(w))) return true;
 
-  // 3) 关键词对齐：只对抽象人格启用；文雅人格已放开
   if (lang === "en" && persona === "abstract") {
     const userKeywords = u
       .toLowerCase()
@@ -679,7 +560,6 @@ function looksBadAnswer(text, lang, userText, persona) {
   return false;
 }
 
-// 聊天阶段专用兜底池（和人格卡片的 FALLBACK_SUMMARY 无关）
 function pickChatFallbackSentence(persona, lang) {
   if (lang === "zh") {
     const pool =
@@ -708,9 +588,8 @@ function pickChatFallbackSentence(persona, lang) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// === 真正的生成函数：带历史 + 抽象/文雅参数差异 + 自动重试 + 兜底 ===
 async function generateAssistantReply(userText) {
-  const persona = STATE.persona || "elegant"; // abstract / elegant
+  const persona = STATE.persona || "elegant";
   const lang = STATE.languageMode;
 
   const sysBase = buildSystemPrompt(persona, lang);
@@ -735,16 +614,13 @@ async function generateAssistantReply(userText) {
 
   const max_tokens = lang === "zh" ? (isAbs ? 120 : 160) : 120;
 
-  // 取最近 8 条，映射成 {role, content}
   let history = (STATE.chatHistory || [])
     .slice(-8)
     .map((m) => ({ role: m.role, content: m.text }));
 
-  // 去掉“本轮刚 push 的”最后一条 user（onSend 已经保存了）
   if (history.length && history[history.length - 1].role === "user") {
     history = history.slice(0, -1);
   }
-  // 再裁到 6 条
   history = history.slice(-6);
 
   async function runOnce(extraSys = "", optsOverride = {}) {
@@ -870,7 +746,6 @@ async function generateAssistantReply(userText) {
     }
   }
 
-  // 兜底：如果最后结果还是明显不行，就用安全池
   if (!out || looksBadAnswer(out, lang, userText, persona)) {
     const fallback = pickChatFallbackSentence(persona, lang);
     console.warn("[AI FALLBACK USED]", { persona, lang, userText, fallback });
@@ -1115,14 +990,12 @@ function endChat(reason){
   STATE.reqId += 1;
   STATE.isGenerating = false;
   updateChatButtons();
-
-  // 清空 chat 顶部回复泡
   setChatReply("");
 
   openResultCard();
 }
 
-// ====== Reset all ======
+// Reset all
 function resetAll(){
   STATE.reqId += 1;
   STATE.phase = "FEEDING";
@@ -1145,7 +1018,6 @@ function resetAll(){
   updateChatButtons();
 }
 
-// ====== Word cloud layout ======
 let CLOUD_TOKENS = [];
 const DESIGN_W = 1920, DESIGN_H = 1080;
 

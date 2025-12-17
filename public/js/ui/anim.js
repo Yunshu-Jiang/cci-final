@@ -10,11 +10,7 @@ window.__press = function press(el) {
   gsap.fromTo(el, { scale: 1 }, { scale: 0.92, duration: 0.08, yoyo: true, repeat: 1, ease: "power2.out" });
 };
 
-/**
- * 固定白色气泡更新器（FEEDING 用）
- * text: string
- * opts: { isLoading?: boolean, html?: string }
- */
+
 window.__bubble = function bubble(text, opts = {}) {
   if (!replyEl || !replyTextEl) return;
 
@@ -32,7 +28,6 @@ window.__bubble = function bubble(text, opts = {}) {
   }
 };
 
-// 主题切换：维持你原来的逻辑（neutral / abstract / literary）
 window.__swapTheme = function swapTheme(theme) {
   const srcMap = {
     neutral: "./img/person-neutral.png",
