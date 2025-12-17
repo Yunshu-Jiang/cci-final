@@ -8,6 +8,10 @@ const resetBtn = document.getElementById('reset-btn');
 const phaseTitleEl = document.getElementById('phase-title');
 const selectedCounterEl = document.getElementById('selected-counter');
 const selectedListEl = document.getElementById('selected-list');
+
+if (selectedCounterEl) selectedCounterEl.style.display = "none";
+if (selectedListEl) selectedListEl.style.display = "none";
+
 const chatBarEl = document.getElementById('chat-bar');
 const chatInputEl = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
@@ -904,7 +908,6 @@ function lockChatToViewCardButton() {
     sendBtn.dataset.mode = "view-card";
   }
 
-  setChatReply("点击查看人格卡片 / Tap to view persona card", { isLoading: false });
 }
 
 function clearViewCardMode() {
